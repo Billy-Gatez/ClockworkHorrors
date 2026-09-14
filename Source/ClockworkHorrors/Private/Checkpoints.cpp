@@ -9,6 +9,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include <CodeGameInstance.h>
+#include "Blueprint/UserWidget.h"
 
 ACheckpoints::ACheckpoints()
 {
@@ -37,6 +38,22 @@ void ACheckpoints::BoundOverlap(
     if (OtherActor && OtherActor->IsA(ABaseCharacter::StaticClass()))
     {
         CheckpointReached();
+
+        if (!bLoadsNewLevel)
+        {
+			CheckpointUI = CreateWidget<UUserWidget>(GetWorld(), CheckpointUIClass);
+            CheckpointUI->AddToViewport(-1);
+
+            FTimerHandle HideUIHandle;
+            GetWorld()->GetTimerManager().SetTimer(HideUIHandle, [this]()
+                {
+                    if (CheckpointUI)
+                    {
+                        CheckpointUI->RemoveFromParent();
+                        CheckpointUI = nullptr;
+                    }
+                }, CheckpointUIDisplayTime, false);
+        }
     }
 }
 
@@ -105,7 +122,7 @@ void ACheckpoints::LoadNextLevel()
         *LevelToLoad.ToString());
     UCodeGameInstance* instance = Cast<UCodeGameInstance>(GetGameInstance());
     int index = instance->GameLevels.Find(LevelToLoad);
-    instance->LoadLevelSafe(index);
+    instance->LoadLevelSafe(index,true);
     //UGameplayStatics::OpenLevel(this, LevelToLoad, true);
 }
 

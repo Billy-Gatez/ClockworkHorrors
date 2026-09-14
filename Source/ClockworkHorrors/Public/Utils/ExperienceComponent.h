@@ -6,7 +6,7 @@
 #include "Components/ActorComponent.h"
 #include "ExperienceComponent.generated.h"
 
-
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSkillPointGained, int, points);
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
 class CLOCKWORKHORRORS_API UExperienceComponent : public UActorComponent
 {
@@ -65,7 +65,8 @@ public:
 	void SetExperiencePoints(float exp) { ExperiencePoints = exp; }
 	UFUNCTION(BlueprintCallable, Category = "Experience")
 	float GetMaxExperiencePoints() const { return MaxExperiencePoints; }
-
+	UFUNCTION(BlueprintCallable, Category = "Experience")
+	void SetMaxExperiencePoints(float maxExp) { MaxExperiencePoints = maxExp; }
 	UFUNCTION(BlueprintCallable, Category = "Experience")
 	float GetExperiencePercent() const
 	{
@@ -84,5 +85,6 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Experience")
 	int32 GetSkillPoints() const { return SkillPoints; }
 	UFUNCTION(BlueprintCallable, Category = "Experience")
-	void SetSkillPoints(int32 skill) { SkillPoints = skill; }
+	void SetSkillPoints(int32 skill) { SkillPoints = skill; SkillPointDelegate.Broadcast(SkillPoints); }
+	FOnSkillPointGained SkillPointDelegate;
 };

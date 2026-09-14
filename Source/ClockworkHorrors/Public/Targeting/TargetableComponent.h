@@ -6,11 +6,17 @@
 #include "Components/ActorComponent.h"
 #include "TargetableComponent.generated.h"
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
+    FOnTargetedStateChanged,
+    bool, bIsTargeted
+);
+
 /**
  * Marks an actor as a valid lock-on target.
  *
- * Add this component to an enemy Blueprint (or any other actor) that should
- * be targetable by the Z-lock system. No changes to AEnemy are required.
+ * AEnemy owns this component in the production setup, so all enemy children
+ * inherit the same targeting behavior. It can also be added to any other actor
+ * that should participate in the lock-on system.
  */
 UCLASS(ClassGroup = (Targeting), meta = (BlueprintSpawnableComponent))
 class CLOCKWORKHORRORS_API UTargetableComponent : public UActorComponent
@@ -36,9 +42,34 @@ public:
     UFUNCTION(BlueprintPure, Category = "Targeting")
     float GetTargetPriority() const { return TargetPriority; }
 
+    /** Is this actor the player's currently selected lock-on target? */
+    UFUNCTION(BlueprintPure, Category = "Targeting")
+    bool IsTargeted() const { return bIsTargeted; }
+
+    /**
+     * Update the presentation-facing targeted state.
+     * TargetLockComponent calls this automatically when locking, switching,
+     * or releasing a target. Gameplay/UI can listen to OnTargetedStateChanged.
+     */
+    UFUNCTION(BlueprintCallable, Category = "Targeting")
+    void SetTargeted(bool bNewTargeted);
+
+    /**
+     * Fired only when the targeted state actually changes.
+     * This is intentionally presentation-agnostic: enemy Blueprints can show
+     * a widget, outline, material effect, sound, etc. without the player
+     * targeting code casting to a specific enemy class.
+     */
+    UPROPERTY(BlueprintAssignable, Category = "Targeting")
+    FOnTargetedStateChanged OnTargetedStateChanged;
+
 protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Targeting")
     bool bCanBeTargeted = true;
+
+    /** Runtime state used by presentation systems; not a designer-authored default. */
+    UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Targeting")
+    bool bIsTargeted = false;
 
     /**
      * Local-space offset from the owning actor's location.

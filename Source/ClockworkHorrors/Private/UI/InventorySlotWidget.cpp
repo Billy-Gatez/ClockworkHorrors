@@ -59,6 +59,25 @@ void UInventorySlotWidget::AddQuantityToSlot(int32 QuantityToAdd)
 	UpdateSlotUI();
 }
 
+bool UInventorySlotWidget::RemoveQuantityFromSlot(int32 QuantityToRemove)
+{
+	if (!ItemSlotData.IsValidEntry())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("UInventorySlotWidget::AddQuantityToSlot: Attempted to remove quantity from an invalid slot"));
+		return true;
+	}
+	UE_LOG(LogTemp, Log, TEXT("UInventorySlotWidget::AddQuantityToSlot: Decreasing quantity %d to item %s in slot"), QuantityToRemove, *ItemSlotData.GetItemDataName().ToString());
+	ItemSlotData.Quantity -= QuantityToRemove;
+	if (ItemSlotData.Quantity == 0)
+	{
+		ItemSlotData = FInventorySlotEntry();
+		UpdateSlotUI();
+		return true;
+	}
+	UpdateSlotUI();
+	return false;
+}
+
 void UInventorySlotWidget::ClearSlot()
 {
 	//UE_LOG(LogTemp, Log, TEXT("UInventorySlotWidget::ClearSlot: Clearing slot for item %s"), *ItemSlotData.GetItemDataName().ToString());
@@ -83,7 +102,14 @@ void UInventorySlotWidget::UpdateSlotUI()
 		*GetNameSafe(ItemSlotData.ItemData));*/
 
 	ItemIcon->SetBrushFromTexture(ItemSlotData.ItemData->Icon);
-	ItemQuantityText->SetText(FText::AsNumber(ItemSlotData.Quantity));
+	if (ItemSlotData.ItemData->AmmoType)
+	{
+		ItemQuantityText->SetText(FText::AsNumber(ItemSlotData.Ammo));
+	}
+	else
+	{
+		ItemQuantityText->SetText(FText::AsNumber(ItemSlotData.Quantity));
+	}
 }
 
 FReply UInventorySlotWidget::NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)

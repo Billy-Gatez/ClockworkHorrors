@@ -19,6 +19,9 @@ public:
 
 	void OnPossess(APawn* InPawn) override;
 
+	UFUNCTION()
+	void SetBehaviorTree(class UBehaviorTree* NewBehaviorTree);
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	class UBehaviorTree* BehaviorTree;
 

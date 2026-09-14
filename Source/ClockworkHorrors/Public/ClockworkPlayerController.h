@@ -9,6 +9,7 @@
 
 class UInputAction;
 class UInputMappingContext;
+class UTargetLockComponent;
 
 UCLASS()
 class CLOCKWORKHORRORS_API AClockworkPlayerController : public APlayerController
@@ -17,6 +18,7 @@ class CLOCKWORKHORRORS_API AClockworkPlayerController : public APlayerController
 
 protected:
     virtual void BeginPlay() override;
+    virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
     virtual void SetupInputComponent() override;
 
     void Move(const FInputActionValue& Value);
@@ -43,9 +45,18 @@ protected:
     void Slot10();
     void DropWeapon();
     void ClearInventory();
+    void LevelUpButton();
 private:
     void HandlePauseInput();
     void HandleQuitInput();
+
+    // Target-lock input handlers. The controller remains usable by Pawns that
+    // do not have a TargetLockComponent; these simply no-op in that case.
+    void ToggleTargetLock();
+    void HandleTargetSwitch(const FInputActionValue& Value);
+    void HandleLockedCameraLook(const FInputActionValue& Value);
+    void HandleLockedCameraMouseLook(const FInputActionValue& Value);
+    UTargetLockComponent* GetTargetLockComponent() const;
 
 public:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
@@ -116,12 +127,30 @@ public:
 
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
     UInputAction* DropWeaponAction;
+
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input")
     UInputAction* ClearInventoryAction;
-
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Input")
+    UInputAction* DebugLevelUpAction;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Input")
     float MouseSensitivity = 45.0f;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Input")
     float LookSensitivity = 100.0f;
+
+    // =========================================================
+    // TARGET LOCK INPUT
+    // =========================================================
+
+    /** Separate mapping context for target lock/switch bindings. */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input|Target Lock")
+    UInputMappingContext* TargetLockMappingContext;
+
+    /** Digital lock toggle action. Current prototype uses Q and R3. */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input|Target Lock")
+    UInputAction* TargetLockAction;
+
+    /** Axis1D switch action. Negative = left, positive = right. */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input|Target Lock")
+    UInputAction* TargetSwitchAction;
 };

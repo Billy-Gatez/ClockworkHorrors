@@ -47,6 +47,8 @@
 #include "Interfaces/CompanionInterface.h"
 #include "SealedDoor.h"
 #include "Actors/TrapActivator.h"
+#include "UI/PlayerHUDWidget.h"
+#include "Utils/SkillTreeComponent.h"
 ABaseCharacter::ABaseCharacter()
 {
 	PrimaryActorTick.bCanEverTick = true;
@@ -56,7 +58,7 @@ ABaseCharacter::ABaseCharacter()
 	InventoryComponent = CreateDefaultSubobject<UInventoryComponent>(TEXT("InventoryComponent"));
 	WeaponSlots = CreateDefaultSubobject<UWeaponSlots>(TEXT("WeaponSlots"));
 	ExperienceComponent = CreateDefaultSubobject<UExperienceComponent>(TEXT("ExperienceComponent"));
-
+	SkillTree = CreateDefaultSubobject<USkillTreeComponent>(TEXT("SkillTreeComponent"));
 	MiniMapSpringArm = CreateDefaultSubobject<USpringArmComponent>(TEXT("MiniMapSpringArm"));
 	MiniMapSpringArm->SetupAttachment(RootComponent);
 	MiniMapSpringArm->TargetArmLength = 1000.0f;
@@ -96,13 +98,18 @@ void ABaseCharacter::ObjectInteract(AActor* Actor)
 void ABaseCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+	/*HealthBarColor = FLinearColor(1.0f, 0.65f, 0.0f, 1.f);
+	OriginalHealthBarColor = HealthBarColor;*/
 	bIsDead = false;
+
+
 	if (HealthComponent)
 	{
 		HealthComponent->OnCharacterDeath.AddDynamic(
 			this,
 			&ABaseCharacter::HandleDeath
 		);
+		//OnHealthBarColorChanged.AddDynamic(this, &ABaseCharacter::ChangeHealthBarColor);
 	}
 	else
 	{
@@ -179,12 +186,17 @@ void ABaseCharacter::BeginPlay()
 		{
 			InventoryWidget->AddToViewport();
 			InventoryWidget->SetVisibility(ESlateVisibility::Hidden);
-
+			InventoryWidget->LoadSkillTreeDelegate.AddDynamic(InventoryWidget, &UMainInventoryWidget::LoadSkillTree);
 			if (InventoryComponent)
 			{
 				InventoryComponent->OnItemDataAdded.AddDynamic(InventoryWidget, &UMainInventoryWidget::UpdateInventoryUI);
 				InventoryComponent->OnItemRemoved.AddDynamic(InventoryWidget, &UMainInventoryWidget::UpdateInventoryUI_Remove);
 				InventoryComponent->OnInventorySizeIncreased.AddDynamic(InventoryWidget, &UMainInventoryWidget::SetInventoryGridMaxSlotCount);
+			}
+			ExperienceComponent->SkillPointDelegate.AddDynamic(InventoryWidget, &UMainInventoryWidget::SkillPointsTextUpdated);
+			if (SkillTree)
+			{
+				InventoryWidget->OnUpgradeSkill.AddDynamic(SkillTree, &USkillTreeComponent::SkillUpgraded);
 			}
 		}
 	}
@@ -214,8 +226,14 @@ void ABaseCharacter::BeginPlay()
 			CompanionInstance = Cast<ICompanionInterface>(Comp);
 		}
 	}
+
+	if (GetCharacterMovement())
+	{
+		baseSpeed = GetCharacterMovement()->MaxWalkSpeed;
+	}
 	OnLevelChange.AddDynamic(this, &ABaseCharacter::SavePlayerData);
 	GetWorld()->OnWorldBeginPlay.AddUObject(this, &ABaseCharacter::LoadPlayerData);
+	GetWorldTimerManager().SetTimer(StatusEffectTimerHandle, this, &ABaseCharacter::UpdateStatusEffects, 1.0f, true);
 }
 
 
@@ -292,111 +310,130 @@ void ABaseCharacter::ResetCharacterForRespawn()
 	ShowHuds();
 }
 
-void ABaseCharacter::ShowGameOverOverlay()
+void ABaseCharacter::ResetStunEffect()
 {
-	if (bGameOverOverlayShown)
+	bIsStunned = false;
+	if (APlayerController* PlayerController = Cast<APlayerController>(GetController()))
 	{
-		return;
-	}
-
-	if (!(GEngine && GEngine->GameViewport))
-	{
-		return;
-	}
-
-	GameOverSlateWidget =
-		SNew(SOverlay)
-		+ SOverlay::Slot()
-		[
-			SNew(SColorBlock)
-				.Color(FLinearColor(0.f, 0.f, 0.f, 0.7f))
-		]
-		+ SOverlay::Slot()
-		.HAlign(HAlign_Center)
-		.VAlign(VAlign_Center)
-		[
-			SNew(SVerticalBox)
-				+ SVerticalBox::Slot()
-				.Padding(FMargin(10.f))
-				.HAlign(HAlign_Center)
-				.VAlign(VAlign_Center)
-				[
-					SNew(STextBlock)
-						.Text(FText::FromString(TEXT("GAME OVER")))
-						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 40))
-						.ColorAndOpacity(FLinearColor::White)
-				]
-				+ SVerticalBox::Slot()
-				.Padding(FMargin(5.f))
-				.HAlign(HAlign_Center)
-				.VAlign(VAlign_Center)
-				[
-					SNew(SButton)
-						.OnClicked_Lambda([this]()
-							{
-								RestartLevel();
-								return FReply::Handled();
-							})
-						[
-							SNew(STextBlock)
-								.Text(FText::FromString(TEXT("Restart")))
-								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 24))
-								.ColorAndOpacity(FLinearColor::White)
-						]
-				]
-				+ SVerticalBox::Slot()
-				.Padding(FMargin(5.f))
-				.HAlign(HAlign_Center)
-				.VAlign(VAlign_Center)
-				[
-					SNew(SButton)
-						.OnClicked_Lambda([this]()
-							{
-								Respawn();
-								HideGameOverOverlay();
-								return FReply::Handled();
-							})
-						[
-							SNew(STextBlock)
-								.Text(FText::FromString(TEXT("Respawn")))
-								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 24))
-								.ColorAndOpacity(FLinearColor::White)
-						]
-				]
-				+ SVerticalBox::Slot()
-				.Padding(FMargin(5.f))
-				.HAlign(HAlign_Center)
-				.VAlign(VAlign_Center)
-				[
-					SNew(SButton)
-						.OnClicked_Lambda([this]()
-							{
-								QuitGameFromPause();
-								return FReply::Handled();
-							})
-						[
-							SNew(STextBlock)
-								.Text(FText::FromString(TEXT("Quit to Desktop")))
-								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 24))
-								.ColorAndOpacity(FLinearColor::White)
-						]
-				]
-		];
-
-	GEngine->GameViewport->AddViewportWidgetContent(GameOverSlateWidget.ToSharedRef());
-	bGameOverOverlayShown = true;
-
-	APlayerController* PC = Cast<APlayerController>(GetController());
-	if (PC)
-	{
-		PC->bShowMouseCursor = true;
-
-		FInputModeGameAndUI InputMode;
-		InputMode.SetHideCursorDuringCapture(false);
-		InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
-		PC->SetInputMode(InputMode);
+		PlayerController->SetIgnoreMoveInput(false);
 	}
 }
+
+void ABaseCharacter::ResetWeakenEffect()
+{
+	weakenEffect = 0.0f;
+}
+
+void ABaseCharacter::ResetSlowEffect()
+{
+	GetCharacterMovement()->MaxWalkSpeed = baseSpeed;
+}
+
+//void ABaseCharacter::ShowGameOverOverlay()
+//{
+//	if (bGameOverOverlayShown)
+//	{
+//		return;
+//	}
+//
+//	if (!(GEngine && GEngine->GameViewport))
+//	{
+//		return;
+//	}
+//
+//	GameOverSlateWidget =
+//		SNew(SOverlay)
+//		+ SOverlay::Slot()
+//		[
+//			SNew(SColorBlock)
+//				.Color(FLinearColor(0.f, 0.f, 0.f, 0.7f))
+//		]
+//		+ SOverlay::Slot()
+//		.HAlign(HAlign_Center)
+//		.VAlign(VAlign_Center)
+//		[
+//			SNew(SVerticalBox)
+//				+ SVerticalBox::Slot()
+//				.Padding(FMargin(10.f))
+//				.HAlign(HAlign_Center)
+//				.VAlign(VAlign_Center)
+//				[
+//					SNew(STextBlock)
+//						.Text(FText::FromString(TEXT("GAME OVER")))
+//						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 40))
+//						.ColorAndOpacity(FLinearColor::White)
+//				]
+//				+ SVerticalBox::Slot()
+//				.Padding(FMargin(5.f))
+//				.HAlign(HAlign_Center)
+//				.VAlign(VAlign_Center)
+//				[
+//					SNew(SButton)
+//						.OnClicked_Lambda([this]()
+//							{
+//								RestartLevel();
+//								return FReply::Handled();
+//							})
+//						[
+//							SNew(STextBlock)
+//								.Text(FText::FromString(TEXT("Restart")))
+//								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 24))
+//								.ColorAndOpacity(FLinearColor::White)
+//						]
+//				]
+//				+ SVerticalBox::Slot()
+//				.Padding(FMargin(5.f))
+//				.HAlign(HAlign_Center)
+//				.VAlign(VAlign_Center)
+//				[
+//					SNew(SButton)
+//						.OnClicked_Lambda([this]()
+//							{
+//								Respawn();
+//								HideGameOverOverlay();
+//								return FReply::Handled();
+//							})
+//						[
+//							SNew(STextBlock)
+//								.Text(FText::FromString(TEXT("Respawn")))
+//								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 24))
+//								.ColorAndOpacity(FLinearColor::White)
+//						]
+//				]
+//				+ SVerticalBox::Slot()
+//				.Padding(FMargin(5.f))
+//				.HAlign(HAlign_Center)
+//				.VAlign(VAlign_Center)
+//				[
+//					SNew(SButton)
+//						.OnClicked_Lambda([this]()
+//							{
+//								QuitGameFromPause();
+//								return FReply::Handled();
+//							})
+//						[
+//							SNew(STextBlock)
+//								.Text(FText::FromString(TEXT("Quit to Desktop")))
+//								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 24))
+//								.ColorAndOpacity(FLinearColor::White)
+//						]
+//				]
+//		];
+//
+//	GEngine->GameViewport->AddViewportWidgetContent(GameOverSlateWidget.ToSharedRef());
+//	bGameOverOverlayShown = true;
+//
+//	APlayerController* PC = Cast<APlayerController>(GetController());
+//	if (PC)
+//	{
+//		PC->bShowMouseCursor = true;
+//
+//		FInputModeGameAndUI InputMode;
+//		InputMode.SetHideCursorDuringCapture(false);
+//		InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+//		PC->SetInputMode(InputMode);
+//	}
+//}
 
 void ABaseCharacter::HideGameOverOverlay()
 {
@@ -478,6 +515,13 @@ void ABaseCharacter::HandlePausePressed()
 	PlayerController->SetPause(true);
 }
 
+void ABaseCharacter::ChangeHealthBarColor(FLinearColor color)
+{
+	/*HealthBarColor = color;
+	HideHealthBarHUD();
+	ShowHealthBarHUD();*/
+}
+
 void ABaseCharacter::AttackingAnim()
 {
 	if (!CharacterAnimationComponent)
@@ -514,30 +558,30 @@ void ABaseCharacter::HandleActionAnimationEnded(
 }
 
 // .cpp
-float ABaseCharacter::GetExperiencePercent() const
-{
-	if (!ExperienceComponent)
-	{
-		return 0.0f;
-	}
-
-	return ExperienceComponent->GetExperiencePercent();
-}
-
-FText ABaseCharacter::GetExperienceText() const
-{
-	if (!ExperienceComponent)
-	{
-		return FText::FromString(TEXT("Experience Component not found"));
-	}
-
-	return FText::FromString(FString::Printf(
-		TEXT("Lv. %d   %d / %d XP"),
-		ExperienceComponent->GetLevel(),
-		FMath::RoundToInt(ExperienceComponent->GetExperiencePoints()),
-		FMath::RoundToInt(ExperienceComponent->GetMaxExperiencePoints())
-	));
-}
+//float ABaseCharacter::GetExperiencePercent() const
+//{
+//	if (!ExperienceComponent)
+//	{
+//		return 0.0f;
+//	}
+//
+//	return ExperienceComponent->GetExperiencePercent();
+//}
+//
+//FText ABaseCharacter::GetExperienceText() const
+//{
+//	if (!ExperienceComponent)
+//	{
+//		return FText::FromString(TEXT("Experience Component not found"));
+//	}
+//
+//	return FText::FromString(FString::Printf(
+//		TEXT("Lv. %d   %d / %d XP"),
+//		ExperienceComponent->GetLevel(),
+//		FMath::RoundToInt(ExperienceComponent->GetExperiencePoints()),
+//		FMath::RoundToInt(ExperienceComponent->GetMaxExperiencePoints())
+//	));
+//}
 
 
 
@@ -633,305 +677,305 @@ void ABaseCharacter::PreviousMenu()
 
 }
 
-void ABaseCharacter::ShowPauseOverlay()
-{
-	if (bPauseOverlayShown)
-	{
-		return;
-	}
-
-	if (!(GEngine && GEngine->GameViewport))
-	{
-		return;
-	}
-
-	UWorld* World = GetWorld();
-	if (World)
-	{
-		UGameplayStatics::SetGamePaused(World, true);
-	}
-
-	TSharedRef<SOverlay> PauseOverlay =
-		SNew(SOverlay)
-		+ SOverlay::Slot()
-		[
-			SNew(SColorBlock)
-				.Color(FLinearColor(0.f, 0.f, 0.f, 0.5f))
-		]
-		+ SOverlay::Slot()
-		.HAlign(HAlign_Center)
-		.VAlign(VAlign_Center)
-		[
-			SNew(SVerticalBox)
-				+ SVerticalBox::Slot()
-				.Padding(FMargin(10.f))
-				.HAlign(HAlign_Center)
-				.VAlign(VAlign_Center)
-				[
-					SNew(STextBlock)
-						.Text(FText::FromString(TEXT("Paused")))
-						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 32))
-						.ColorAndOpacity(FLinearColor::White)
-				]
-				+ SVerticalBox::Slot()
-				.Padding(FMargin(5.f))
-				.HAlign(HAlign_Center)
-				.VAlign(VAlign_Center)
-				[
-					SNew(SButton)
-						.OnClicked_Lambda([this]()
-							{
-								HidePauseOverlay();
-								return FReply::Handled();
-							})
-						[
-							SNew(STextBlock)
-								.Text(FText::FromString(TEXT("Resume")))
-								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 20))
-								.ColorAndOpacity(FLinearColor::White)
-						]
-				]
-				+ SVerticalBox::Slot()
-				.Padding(FMargin(5.f))
-				.HAlign(HAlign_Center)
-				.VAlign(VAlign_Center)
-				[
-					SNew(SButton)
-						.OnClicked_Lambda([this]()
-							{
-								RestartLevel();
-								return FReply::Handled();
-							})
-						[
-							SNew(STextBlock)
-								.Text(FText::FromString(TEXT("Restart")))
-								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 20))
-								.ColorAndOpacity(FLinearColor::White)
-						]
-				]
-				+ SVerticalBox::Slot()
-				.Padding(FMargin(5.f))
-				.HAlign(HAlign_Center)
-				.VAlign(VAlign_Center)
-				[
-					SNew(SButton)
-						.OnClicked_Lambda([this]()
-							{
-								ShowControlsOverlay();
-								return FReply::Handled();
-							})
-						[
-							SNew(STextBlock)
-								.Text(FText::FromString(TEXT("Controls")))
-								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 20))
-								.ColorAndOpacity(FLinearColor::White)
-						]
-				]
-				+ SVerticalBox::Slot()
-				.Padding(FMargin(5.f))
-				.HAlign(HAlign_Center)
-				.VAlign(VAlign_Center)
-				[
-					SNew(SButton)
-						.OnClicked_Lambda([this]()
-							{
-								QuitGameFromPause();
-								return FReply::Handled();
-							})
-						[
-							SNew(STextBlock)
-								.Text(FText::FromString(TEXT("Quit to Desktop")))
-								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 20))
-								.ColorAndOpacity(FLinearColor::White)
-						]
-				]
-		];
-
-	PauseSlateWidget = PauseOverlay;
-	GEngine->GameViewport->AddViewportWidgetContent(PauseOverlay);
-
-	bPauseOverlayShown = true;
-
-	APlayerController* PC = Cast<APlayerController>(GetController());
-	if (PC)
-	{
-		PC->bShowMouseCursor = true;
-
-		FInputModeGameAndUI InputMode;
-		InputMode.SetHideCursorDuringCapture(false);
-		InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
-		PC->SetInputMode(InputMode);
-	}
-}
-
-void ABaseCharacter::HidePauseOverlay()
-{
-	if (!bPauseOverlayShown)
-	{
-		return;
-	}
-
-	if (!(GEngine && GEngine->GameViewport))
-	{
-		return;
-	}
-
-	if (PauseSlateWidget.IsValid())
-	{
-		GEngine->GameViewport->RemoveViewportWidgetContent(PauseSlateWidget.ToSharedRef());
-		PauseSlateWidget.Reset();
-	}
-
-	bPauseOverlayShown = false;
-
-	UWorld* World = GetWorld();
-	if (World)
-	{
-		UGameplayStatics::SetGamePaused(World, false);
-	}
-
-	APlayerController* PC = Cast<APlayerController>(GetController());
-	if (PC)
-	{
-		PC->SetPause(false);
-
-		PC->bShowMouseCursor = false;
-		PC->SetInputMode(FInputModeGameOnly());
-	}
-
-	UE_LOG(LogTemp, Warning, TEXT("HidePauseOverlay: game should now be unpaused."));
-}
-
-void ABaseCharacter::ShowControlsOverlay()
-{
-	if (bControlsOverlayShown)
-	{
-		return;
-	}
-
-	if (!(GEngine && GEngine->GameViewport))
-	{
-		return;
-	}
-
-	TSharedRef<SOverlay> ControlsOverlay =
-		SNew(SOverlay)
-		+ SOverlay::Slot()
-		[
-			SNew(SColorBlock)
-				.Color(FLinearColor(0.f, 0.f, 0.f, 0.7f))
-		]
-		+ SOverlay::Slot()
-		.HAlign(HAlign_Fill)
-		.VAlign(VAlign_Fill)
-		[
-			SNew(SVerticalBox)
-				+ SVerticalBox::Slot()
-				.Padding(FMargin(10.f))
-				.HAlign(HAlign_Center)
-				.VAlign(VAlign_Top)
-				[
-					SNew(STextBlock)
-						.Text(FText::FromString(TEXT("Controls")))
-						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 32))
-						.ColorAndOpacity(FLinearColor::White)
-				]
-				+ SVerticalBox::Slot()
-				.Padding(FMargin(40.f, 20.f, 40.f, 10.f))
-				.HAlign(HAlign_Fill)
-				.VAlign(VAlign_Fill)
-				[
-					SNew(SScrollBox)
-						+ SScrollBox::Slot()
-						[
-							SNew(STextBlock)
-								.Text(FText::FromString(
-									TEXT("Movement:\n")
-									TEXT("  W / A / S / D - Move\n")
-									TEXT("  Mouse - Look\n\n")
-									TEXT("  SPACE - Jump\n\n")
-									TEXT("  I - Inventory\n")
-									TEXT("Combat & Interaction:\n")
-									TEXT("  Left Mouse Button - Attack\n")
-									TEXT("  Scroll wheel - Change spell\n")
-									TEXT("  E - Equip item\n")
-									TEXT("  F - Drop item\n\n")
-									TEXT("Pause / Restart / Quit:\n")
-									TEXT("  M - Pause / Unpause\n")
-									
-								))
-								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 20))
-								.ColorAndOpacity(FLinearColor::White)
-						]
-				]
-				+ SVerticalBox::Slot()
-				.Padding(FMargin(10.f))
-				.HAlign(HAlign_Center)
-				.VAlign(VAlign_Bottom)
-				[
-					SNew(SButton)
-						.OnClicked_Lambda([this]()
-							{
-								HideControlsOverlay();
-								return FReply::Handled();
-							})
-						[
-							SNew(STextBlock)
-								.Text(FText::FromString(TEXT("Back")))
-								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 20))
-								.ColorAndOpacity(FLinearColor::White)
-						]
-				]
-		];
-
-	ControlsSlateWidget = ControlsOverlay;
-	GEngine->GameViewport->AddViewportWidgetContent(ControlsOverlay);
-
-	bControlsOverlayShown = true;
-
-	APlayerController* PC = Cast<APlayerController>(GetController());
-	if (PC)
-	{
-		PC->bShowMouseCursor = true;
-
-		FInputModeGameAndUI InputMode;
-		InputMode.SetHideCursorDuringCapture(false);
-		InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
-		PC->SetInputMode(InputMode);
-	}
-}
-
-void ABaseCharacter::HideControlsOverlay()
-{
-	if (!bControlsOverlayShown)
-	{
-		return;
-	}
-
-	if (!(GEngine && GEngine->GameViewport))
-	{
-		return;
-	}
-
-	if (ControlsSlateWidget.IsValid())
-	{
-		GEngine->GameViewport->RemoveViewportWidgetContent(ControlsSlateWidget.ToSharedRef());
-		ControlsSlateWidget.Reset();
-	}
-
-	bControlsOverlayShown = false;
-
-	APlayerController* PC = Cast<APlayerController>(GetController());
-	if (PC)
-	{
-		PC->bShowMouseCursor = true;
-
-		FInputModeGameAndUI InputMode;
-		InputMode.SetHideCursorDuringCapture(false);
-		InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
-		PC->SetInputMode(InputMode);
-	}
-}
+//void ABaseCharacter::ShowPauseOverlay()
+//{
+//	if (bPauseOverlayShown)
+//	{
+//		return;
+//	}
+//
+//	if (!(GEngine && GEngine->GameViewport))
+//	{
+//		return;
+//	}
+//
+//	UWorld* World = GetWorld();
+//	if (World)
+//	{
+//		UGameplayStatics::SetGamePaused(World, true);
+//	}
+//
+//	TSharedRef<SOverlay> PauseOverlay =
+//		SNew(SOverlay)
+//		+ SOverlay::Slot()
+//		[
+//			SNew(SColorBlock)
+//				.Color(FLinearColor(0.f, 0.f, 0.f, 0.5f))
+//		]
+//		+ SOverlay::Slot()
+//		.HAlign(HAlign_Center)
+//		.VAlign(VAlign_Center)
+//		[
+//			SNew(SVerticalBox)
+//				+ SVerticalBox::Slot()
+//				.Padding(FMargin(10.f))
+//				.HAlign(HAlign_Center)
+//				.VAlign(VAlign_Center)
+//				[
+//					SNew(STextBlock)
+//						.Text(FText::FromString(TEXT("Paused")))
+//						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 32))
+//						.ColorAndOpacity(FLinearColor::White)
+//				]
+//				+ SVerticalBox::Slot()
+//				.Padding(FMargin(5.f))
+//				.HAlign(HAlign_Center)
+//				.VAlign(VAlign_Center)
+//				[
+//					SNew(SButton)
+//						.OnClicked_Lambda([this]()
+//							{
+//								HidePauseOverlay();
+//								return FReply::Handled();
+//							})
+//						[
+//							SNew(STextBlock)
+//								.Text(FText::FromString(TEXT("Resume")))
+//								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 20))
+//								.ColorAndOpacity(FLinearColor::White)
+//						]
+//				]
+//				+ SVerticalBox::Slot()
+//				.Padding(FMargin(5.f))
+//				.HAlign(HAlign_Center)
+//				.VAlign(VAlign_Center)
+//				[
+//					SNew(SButton)
+//						.OnClicked_Lambda([this]()
+//							{
+//								RestartLevel();
+//								return FReply::Handled();
+//							})
+//						[
+//							SNew(STextBlock)
+//								.Text(FText::FromString(TEXT("Restart")))
+//								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 20))
+//								.ColorAndOpacity(FLinearColor::White)
+//						]
+//				]
+//				+ SVerticalBox::Slot()
+//				.Padding(FMargin(5.f))
+//				.HAlign(HAlign_Center)
+//				.VAlign(VAlign_Center)
+//				[
+//					SNew(SButton)
+//						.OnClicked_Lambda([this]()
+//							{
+//								ShowControlsOverlay();
+//								return FReply::Handled();
+//							})
+//						[
+//							SNew(STextBlock)
+//								.Text(FText::FromString(TEXT("Controls")))
+//								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 20))
+//								.ColorAndOpacity(FLinearColor::White)
+//						]
+//				]
+//				+ SVerticalBox::Slot()
+//				.Padding(FMargin(5.f))
+//				.HAlign(HAlign_Center)
+//				.VAlign(VAlign_Center)
+//				[
+//					SNew(SButton)
+//						.OnClicked_Lambda([this]()
+//							{
+//								QuitGameFromPause();
+//								return FReply::Handled();
+//							})
+//						[
+//							SNew(STextBlock)
+//								.Text(FText::FromString(TEXT("Quit to Desktop")))
+//								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 20))
+//								.ColorAndOpacity(FLinearColor::White)
+//						]
+//				]
+//		];
+//
+//	PauseSlateWidget = PauseOverlay;
+//	GEngine->GameViewport->AddViewportWidgetContent(PauseOverlay);
+//
+//	bPauseOverlayShown = true;
+//
+//	APlayerController* PC = Cast<APlayerController>(GetController());
+//	if (PC)
+//	{
+//		PC->bShowMouseCursor = true;
+//
+//		FInputModeGameAndUI InputMode;
+//		InputMode.SetHideCursorDuringCapture(false);
+//		InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+//		PC->SetInputMode(InputMode);
+//	}
+//}
+//
+//void ABaseCharacter::HidePauseOverlay()
+//{
+//	if (!bPauseOverlayShown)
+//	{
+//		return;
+//	}
+//
+//	if (!(GEngine && GEngine->GameViewport))
+//	{
+//		return;
+//	}
+//
+//	if (PauseSlateWidget.IsValid())
+//	{
+//		GEngine->GameViewport->RemoveViewportWidgetContent(PauseSlateWidget.ToSharedRef());
+//		PauseSlateWidget.Reset();
+//	}
+//
+//	bPauseOverlayShown = false;
+//
+//	UWorld* World = GetWorld();
+//	if (World)
+//	{
+//		UGameplayStatics::SetGamePaused(World, false);
+//	}
+//
+//	APlayerController* PC = Cast<APlayerController>(GetController());
+//	if (PC)
+//	{
+//		PC->SetPause(false);
+//
+//		PC->bShowMouseCursor = false;
+//		PC->SetInputMode(FInputModeGameOnly());
+//	}
+//
+//	UE_LOG(LogTemp, Warning, TEXT("HidePauseOverlay: game should now be unpaused."));
+//}
+//
+//void ABaseCharacter::ShowControlsOverlay()
+//{
+//	if (bControlsOverlayShown)
+//	{
+//		return;
+//	}
+//
+//	if (!(GEngine && GEngine->GameViewport))
+//	{
+//		return;
+//	}
+//
+//	TSharedRef<SOverlay> ControlsOverlay =
+//		SNew(SOverlay)
+//		+ SOverlay::Slot()
+//		[
+//			SNew(SColorBlock)
+//				.Color(FLinearColor(0.f, 0.f, 0.f, 0.7f))
+//		]
+//		+ SOverlay::Slot()
+//		.HAlign(HAlign_Fill)
+//		.VAlign(VAlign_Fill)
+//		[
+//			SNew(SVerticalBox)
+//				+ SVerticalBox::Slot()
+//				.Padding(FMargin(10.f))
+//				.HAlign(HAlign_Center)
+//				.VAlign(VAlign_Top)
+//				[
+//					SNew(STextBlock)
+//						.Text(FText::FromString(TEXT("Controls")))
+//						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 32))
+//						.ColorAndOpacity(FLinearColor::White)
+//				]
+//				+ SVerticalBox::Slot()
+//				.Padding(FMargin(40.f, 20.f, 40.f, 10.f))
+//				.HAlign(HAlign_Fill)
+//				.VAlign(VAlign_Fill)
+//				[
+//					SNew(SScrollBox)
+//						+ SScrollBox::Slot()
+//						[
+//							SNew(STextBlock)
+//								.Text(FText::FromString(
+//									TEXT("Movement:\n")
+//									TEXT("  W / A / S / D - Move\n")
+//									TEXT("  Mouse - Look\n\n")
+//									TEXT("  SPACE - Jump\n\n")
+//									TEXT("  I - Inventory\n")
+//									TEXT("Combat & Interaction:\n")
+//									TEXT("  Left Mouse Button - Attack\n")
+//									TEXT("  Scroll wheel - Change spell\n")
+//									TEXT("  E - Equip item\n")
+//									TEXT("  F - Drop item\n\n")
+//									TEXT("Pause / Restart / Quit:\n")
+//									TEXT("  M - Pause / Unpause\n")
+//									
+//								))
+//								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 20))
+//								.ColorAndOpacity(FLinearColor::White)
+//						]
+//				]
+//				+ SVerticalBox::Slot()
+//				.Padding(FMargin(10.f))
+//				.HAlign(HAlign_Center)
+//				.VAlign(VAlign_Bottom)
+//				[
+//					SNew(SButton)
+//						.OnClicked_Lambda([this]()
+//							{
+//								HideControlsOverlay();
+//								return FReply::Handled();
+//							})
+//						[
+//							SNew(STextBlock)
+//								.Text(FText::FromString(TEXT("Back")))
+//								.Font(FCoreStyle::GetDefaultFontStyle("Regular", 20))
+//								.ColorAndOpacity(FLinearColor::White)
+//						]
+//				]
+//		];
+//
+//	ControlsSlateWidget = ControlsOverlay;
+//	GEngine->GameViewport->AddViewportWidgetContent(ControlsOverlay);
+//
+//	bControlsOverlayShown = true;
+//
+//	APlayerController* PC = Cast<APlayerController>(GetController());
+//	if (PC)
+//	{
+//		PC->bShowMouseCursor = true;
+//
+//		FInputModeGameAndUI InputMode;
+//		InputMode.SetHideCursorDuringCapture(false);
+//		InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+//		PC->SetInputMode(InputMode);
+//	}
+//}
+//
+//void ABaseCharacter::HideControlsOverlay()
+//{
+//	if (!bControlsOverlayShown)
+//	{
+//		return;
+//	}
+//
+//	if (!(GEngine && GEngine->GameViewport))
+//	{
+//		return;
+//	}
+//
+//	if (ControlsSlateWidget.IsValid())
+//	{
+//		GEngine->GameViewport->RemoveViewportWidgetContent(ControlsSlateWidget.ToSharedRef());
+//		ControlsSlateWidget.Reset();
+//	}
+//
+//	bControlsOverlayShown = false;
+//
+//	APlayerController* PC = Cast<APlayerController>(GetController());
+//	if (PC)
+//	{
+//		PC->bShowMouseCursor = true;
+//
+//		FInputModeGameAndUI InputMode;
+//		InputMode.SetHideCursorDuringCapture(false);
+//		InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+//		PC->SetInputMode(InputMode);
+//	}
+//}
 
 void ABaseCharacter::ShowStartScreen()
 {
@@ -1062,55 +1106,55 @@ void ABaseCharacter::ShowStartScreen()
 	}
 }
 
-void ABaseCharacter::ShowHealthBarHUD()
-{
-	if (bHealthBarShown)
-	{
-		return;
-	}
-
-	if (!(GEngine && GEngine->GameViewport))
-	{
-		return;
-	}
-
-	static FSlateColorBrush HealthBarBackgroundBrush(FLinearColor(0.35f, 0.2f, 0.0f, 1.0f));
-
-	HealthBarSlateWidget =
-		SNew(SOverlay)
-		+ SOverlay::Slot()
-		.HAlign(HAlign_Left)
-		.VAlign(VAlign_Top)
-		.Padding(FMargin(30.f, 30.f, 0.f, 0.f))
-		[
-			SNew(SVerticalBox)
-				+ SVerticalBox::Slot()
-				.AutoHeight()
-				.Padding(FMargin(0.f, 0.f, 0.f, 4.f))
-				[
-					SNew(STextBlock)
-						.Text_Lambda([this]() { return GetHealthText(); })
-						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 16))
-						.ColorAndOpacity(FLinearColor::White)
-				]
-				+ SVerticalBox::Slot()
-				.AutoHeight()
-				[
-					SNew(SBox)
-						.WidthOverride(250.f)
-						.HeightOverride(22.f)
-						[
-							SNew(SProgressBar)
-								.Percent_Lambda([this]() { return TOptional<float>(GetHealthPercent()); })
-								.FillColorAndOpacity(FLinearColor(1.0f, 0.65f, 0.0f, 1.f))
-								.BackgroundImage(&HealthBarBackgroundBrush)
-						]
-				]
-		];
-
-	GEngine->GameViewport->AddViewportWidgetContent(HealthBarSlateWidget.ToSharedRef());
-	bHealthBarShown = true;
-}
+//void ABaseCharacter::ShowHealthBarHUD()
+//{
+//	if (bHealthBarShown)
+//	{
+//		return;
+//	}
+//
+//	if (!(GEngine && GEngine->GameViewport))
+//	{
+//		return;
+//	}
+//
+//	static FSlateColorBrush HealthBarBackgroundBrush(FLinearColor(0.35f, 0.2f, 0.0f, 1.0f));
+//
+//	HealthBarSlateWidget =
+//		SNew(SOverlay)
+//		+ SOverlay::Slot()
+//		.HAlign(HAlign_Left)
+//		.VAlign(VAlign_Top)
+//		.Padding(FMargin(30.f, 30.f, 0.f, 0.f))
+//		[
+//			SNew(SVerticalBox)
+//				+ SVerticalBox::Slot()
+//				.AutoHeight()
+//				.Padding(FMargin(0.f, 0.f, 0.f, 4.f))
+//				[
+//					SNew(STextBlock)
+//						.Text_Lambda([this]() { return GetHealthText(); })
+//						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 16))
+//						.ColorAndOpacity(FLinearColor::White)
+//				]
+//				+ SVerticalBox::Slot()
+//				.AutoHeight()
+//				[
+//					SNew(SBox)
+//						.WidthOverride(250.f)
+//						.HeightOverride(22.f)
+//						[
+//							SNew(SProgressBar)
+//								.Percent_Lambda([this]() { return TOptional<float>(GetHealthPercent()); })
+//								.FillColorAndOpacity(HealthBarColor)
+//								.BackgroundImage(&HealthBarBackgroundBrush)
+//						]
+//				]
+//		];
+//
+//	GEngine->GameViewport->AddViewportWidgetContent(HealthBarSlateWidget.ToSharedRef());
+//	bHealthBarShown = true;
+//}
 
 
 void ABaseCharacter::HideStartScreen()
@@ -1172,66 +1216,111 @@ void ABaseCharacter::InventoryHUD()
 void ABaseCharacter::HideHuds()
 {
 	HideMiniMapHUD();
-	HideHealthBarHUD();
+//	HideHealthBarHUD();
 	HideReticleHUD();
-	HideExperienceHUD();
+	//HideExperienceHUD();
+	HidePlayerHUD();
 }
 
 void ABaseCharacter::ShowHuds()
 {
 	ShowMiniMapHUD();
-	ShowHealthBarHUD();
+//	ShowHealthBarHUD();
 	ShowReticleHUD();
-	ShowExperienceHUD();
+	//ShowExperienceHUD();
+	ShowPlayerHUD();
 }
 
-float ABaseCharacter::GetHealthPercent() const
+void ABaseCharacter::UpdateStatusEffects()
 {
-	if (!IsValid(HealthComponent))
+	if (PlayerHUDWidget)
 	{
-		return 0.0f;
+		PlayerHUDWidget->UpdateStatusEffects(1.0f);
 	}
-
-	const float CurrentHealth = HealthComponent->GetCurrentHealth();
-	const float MaxHealth = HealthComponent->GetMaxHealth();
-
-	if (MaxHealth <= 0.0f)
-	{
-		return 0.0f;
-	}
-
-	return FMath::Clamp(CurrentHealth / MaxHealth, 0.0f, 1.0f);
 }
 
-FText ABaseCharacter::GetHealthText() const
+void ABaseCharacter::UpdatePlayerHUDStatuses(FName StatusEffectName, float Duration, float Strength, FVector KnockbackDirection)
 {
-	if (!HealthComponent)
+	if (PlayerHUDWidget)
 	{
-		return FText::FromString(TEXT("Health Component not found"));
+		if (StatusEffectName == FName("Stun"))
+		{
+			StunPlayer(Duration);
+		}
+		else if (StatusEffectName == FName("Weaken"))
+		{
+			WeakenPlayer(Duration, Strength);
+		}
+		else if (StatusEffectName == FName("Slow"))
+		{
+			SlowPlayer(Duration, Strength);
+		}
+		else if (StatusEffectName == FName("KnockBack"))
+		{
+			KnockBackPlayer(Duration, Strength, KnockbackDirection);
+		}
+		else if (StatusEffectName == FName("Poison"))
+		{
+			PlayerHUDWidget->AddStatusEffectIcon(StatusEffectName, Duration);
+		}
+		else if (StatusEffectName == FName("Burn"))
+		{
+			PlayerHUDWidget->AddStatusEffectIcon(StatusEffectName, Duration);
+		}
+		else
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Unknown status effect: %s"), *StatusEffectName.ToString());
+		}
 	}
-
-	return FText::FromString(FString::Printf(TEXT("%d / %d"),
-		FMath::RoundToInt(HealthComponent->GetCurrentHealth()), FMath::RoundToInt(HealthComponent->GetMaxHealth())));
-
 }
 
-
-
-void ABaseCharacter::HideHealthBarHUD()
-{
-	if (!bHealthBarShown)
-	{
-		return;
-	}
-
-	if (GEngine && GEngine->GameViewport && HealthBarSlateWidget.IsValid())
-	{
-		GEngine->GameViewport->RemoveViewportWidgetContent(HealthBarSlateWidget.ToSharedRef());
-		HealthBarSlateWidget.Reset();
-	}
-
-	bHealthBarShown = false;
-}
+//float ABaseCharacter::GetHealthPercent() const
+//{
+//	if (!IsValid(HealthComponent))
+//	{
+//		return 0.0f;
+//	}
+//
+//	const float CurrentHealth = HealthComponent->GetCurrentHealth();
+//	const float MaxHealth = HealthComponent->GetMaxHealth();
+//
+//	if (MaxHealth <= 0.0f)
+//	{
+//		return 0.0f;
+//	}
+//
+//	return FMath::Clamp(CurrentHealth / MaxHealth, 0.0f, 1.0f);
+//}
+//
+//FText ABaseCharacter::GetHealthText() const
+//{
+//	if (!HealthComponent)
+//	{
+//		return FText::FromString(TEXT("Health Component not found"));
+//	}
+//
+//	return FText::FromString(FString::Printf(TEXT("%d / %d"),
+//		FMath::RoundToInt(HealthComponent->GetCurrentHealth()), FMath::RoundToInt(HealthComponent->GetMaxHealth())));
+//
+//}
+//
+//
+//
+//void ABaseCharacter::HideHealthBarHUD()
+//{
+//	if (!bHealthBarShown)
+//	{
+//		return;
+//	}
+//
+//	if (GEngine && GEngine->GameViewport && HealthBarSlateWidget.IsValid())
+//	{
+//		GEngine->GameViewport->RemoveViewportWidgetContent(HealthBarSlateWidget.ToSharedRef());
+//		HealthBarSlateWidget.Reset();
+//	}
+//
+//	bHealthBarShown = false;
+//}
 
 void ABaseCharacter::ShowReticleHUD()
 {
@@ -1350,74 +1439,74 @@ void ABaseCharacter::ShowGameOverMenu()
 	PlayerController->SetPause(true);
 }
 
-void ABaseCharacter::RestartLevel()
-{
-	UWorld* World = GetWorld();
-	if (!World)
-	{
-		return;
-	}
-
-	if (bPauseOverlayShown && GEngine && GEngine->GameViewport && PauseSlateWidget.IsValid())
-	{
-		GEngine->GameViewport->RemoveViewportWidgetContent(PauseSlateWidget.ToSharedRef());
-		PauseSlateWidget.Reset();
-		bPauseOverlayShown = false;
-	}
-
-	if (bGameOverOverlayShown && GEngine && GEngine->GameViewport && GameOverSlateWidget.IsValid())
-	{
-		GEngine->GameViewport->RemoveViewportWidgetContent(GameOverSlateWidget.ToSharedRef());
-		GameOverSlateWidget.Reset();
-		bGameOverOverlayShown = false;
-	}
-
-	if (bControlsOverlayShown && GEngine && GEngine->GameViewport && ControlsSlateWidget.IsValid())
-	{
-		GEngine->GameViewport->RemoveViewportWidgetContent(ControlsSlateWidget.ToSharedRef());
-		ControlsSlateWidget.Reset();
-		bControlsOverlayShown = false;
-	}
-
-	if (bStartScreenShown && GEngine && GEngine->GameViewport && StartSlateWidget.IsValid())
-	{
-		GEngine->GameViewport->RemoveViewportWidgetContent(StartSlateWidget.ToSharedRef());
-		StartSlateWidget.Reset();
-		bStartScreenShown = false;
-	}
-
-	if (bHealthBarShown && GEngine && GEngine->GameViewport && HealthBarSlateWidget.IsValid())
-	{
-		GEngine->GameViewport->RemoveViewportWidgetContent(HealthBarSlateWidget.ToSharedRef());
-		HealthBarSlateWidget.Reset();
-		bHealthBarShown = false;
-	}
-
-	if (bReticleShown && GEngine && GEngine->GameViewport && ReticleSlateWidget.IsValid())
-	{
-		GEngine->GameViewport->RemoveViewportWidgetContent(
-			ReticleSlateWidget.ToSharedRef()
-		);
-
-		ReticleSlateWidget.Reset();
-		bReticleShown = false;
-	}
-
-	UGameplayStatics::SetGamePaused(World, false);
-
-	APlayerController* PC = World->GetFirstPlayerController();
-	if (PC)
-	{
-		PC->SetPause(false);
-		PC->bShowMouseCursor = false;
-		PC->SetInputMode(FInputModeGameOnly());
-	}
-
-	const FString CurrentMapString = UGameplayStatics::GetCurrentLevelName(World, /*bRemovePrefixString=*/true);
-	const FName CurrentLevelName(*CurrentMapString);
-
-	UGameplayStatics::OpenLevel(World, CurrentLevelName);
-}
+//void ABaseCharacter::RestartLevel()
+//{
+//	UWorld* World = GetWorld();
+//	if (!World)
+//	{
+//		return;
+//	}
+//
+//	if (bPauseOverlayShown && GEngine && GEngine->GameViewport && PauseSlateWidget.IsValid())
+//	{
+//		GEngine->GameViewport->RemoveViewportWidgetContent(PauseSlateWidget.ToSharedRef());
+//		PauseSlateWidget.Reset();
+//		bPauseOverlayShown = false;
+//	}
+//
+//	if (bGameOverOverlayShown && GEngine && GEngine->GameViewport && GameOverSlateWidget.IsValid())
+//	{
+//		GEngine->GameViewport->RemoveViewportWidgetContent(GameOverSlateWidget.ToSharedRef());
+//		GameOverSlateWidget.Reset();
+//		bGameOverOverlayShown = false;
+//	}
+//
+//	if (bControlsOverlayShown && GEngine && GEngine->GameViewport && ControlsSlateWidget.IsValid())
+//	{
+//		GEngine->GameViewport->RemoveViewportWidgetContent(ControlsSlateWidget.ToSharedRef());
+//		ControlsSlateWidget.Reset();
+//		bControlsOverlayShown = false;
+//	}
+//
+//	if (bStartScreenShown && GEngine && GEngine->GameViewport && StartSlateWidget.IsValid())
+//	{
+//		GEngine->GameViewport->RemoveViewportWidgetContent(StartSlateWidget.ToSharedRef());
+//		StartSlateWidget.Reset();
+//		bStartScreenShown = false;
+//	}
+//
+//	if (bHealthBarShown && GEngine && GEngine->GameViewport && HealthBarSlateWidget.IsValid())
+//	{
+//		GEngine->GameViewport->RemoveViewportWidgetContent(HealthBarSlateWidget.ToSharedRef());
+//		HealthBarSlateWidget.Reset();
+//		bHealthBarShown = false;
+//	}
+//
+//	if (bReticleShown && GEngine && GEngine->GameViewport && ReticleSlateWidget.IsValid())
+//	{
+//		GEngine->GameViewport->RemoveViewportWidgetContent(
+//			ReticleSlateWidget.ToSharedRef()
+//		);
+//
+//		ReticleSlateWidget.Reset();
+//		bReticleShown = false;
+//	}
+//
+//	UGameplayStatics::SetGamePaused(World, false);
+//
+//	APlayerController* PC = World->GetFirstPlayerController();
+//	if (PC)
+//	{
+//		PC->SetPause(false);
+//		PC->bShowMouseCursor = false;
+//		PC->SetInputMode(FInputModeGameOnly());
+//	}
+//
+//	const FString CurrentMapString = UGameplayStatics::GetCurrentLevelName(World, /*bRemovePrefixString=*/true);
+//	const FName CurrentLevelName(*CurrentMapString);
+//
+//	UGameplayStatics::OpenLevel(World, CurrentLevelName);
+//}
 
 void ABaseCharacter::Respawn()
 {
@@ -1450,6 +1539,68 @@ void ABaseCharacter::HealPlayer(float HealAmount)
 	if (HealthComponent)
 	{
 		HealthComponent->Heal(HealAmount);
+	}
+}
+
+void ABaseCharacter::UpdatePlayerHUDHP(float CurrentHealth, float MaxHealth)
+{
+	OnHealthChanged.Broadcast(CurrentHealth, MaxHealth);
+}
+
+void ABaseCharacter::UpdatePlayerHUDXP(float CurrentXP, float MaxXP)
+{
+	OnXPChanged.Broadcast(CurrentXP, MaxXP,ExperienceComponent->GetLevel());
+}
+
+void ABaseCharacter::StunPlayer(float StunDuration)
+{
+	if (bIsStunned)
+		return;
+	StunDuration = FMath::Max(StunDuration, 0.0f);
+	if (UCharacterMovementComponent* MovementComponent = GetCharacterMovement())
+	{
+		MovementComponent->StopMovementImmediately();
+	}
+
+	if (APlayerController* PlayerController = Cast<APlayerController>(GetController()))
+	{
+		PlayerController->SetIgnoreMoveInput(true);
+	}
+
+	bIsStunned = true;
+
+	PlayerHUDWidget->AddStatusEffectIcon("Stun", StunDuration);
+	GetWorldTimerManager().SetTimer(StunTimerHandle, this, &ABaseCharacter::ResetStunEffect, StunDuration, false);
+}
+
+void ABaseCharacter::WeakenPlayer(float WeakenDuration, float WeakenStrength)
+{
+	PlayerHUDWidget->AddStatusEffectIcon("Weaken", WeakenDuration);
+	GetWorldTimerManager().SetTimer(StunTimerHandle, this, &ABaseCharacter::ResetWeakenEffect, WeakenDuration, false);
+}
+
+void ABaseCharacter::SlowPlayer(float SlowDuration, float SlowStrength)
+{
+	PlayerHUDWidget->AddStatusEffectIcon("Slow", SlowDuration);
+	GetCharacterMovement()->MaxWalkSpeed *= SlowStrength;
+	GetWorldTimerManager().SetTimer(SlowTimerHandle, this, &ABaseCharacter::ResetSlowEffect, SlowDuration, false);
+}
+
+void ABaseCharacter::KnockBackPlayer(float KnockbackBack, float KnockbackUp, FVector Direction)
+{
+	Direction.Normalize();
+
+	//UE_LOG(LogTemp, Warning, TEXT("KnockBackPlayer: Direction = %s, KnockbackBack = %f, KnockbackUp = %f"), *Direction.ToString(), KnockbackBack, KnockbackUp);
+
+	FVector Launch = (Direction * KnockbackBack) + FVector(0.0f, 0.0f, KnockbackUp);
+	LaunchCharacter(Launch, true, true);
+}
+
+void ABaseCharacter::LevelUpPressed()
+{
+	if (ExperienceComponent)
+	{
+		ExperienceComponent->AddExperience(ExperienceComponent->GetMaxExperiencePoints());
 	}
 }
 
@@ -1562,7 +1713,7 @@ void ABaseCharacter::EquipWeaponSlot(int32 SlotNumber)
 	}
 }
 
-void ABaseCharacter::ItemEquip(AActor* Actor)
+void ABaseCharacter::ItemEquip(AActor* Actor, FInventorySlotEntry* Slot)
 {
 	if (!IsValid(Actor))
 	{
@@ -1606,10 +1757,6 @@ void ABaseCharacter::ItemEquip(AActor* Actor)
 				InventoryComponent->AddItem(WeaponPickup->ItemDataAsset);
 			}
 
-			if (WeaponPickup->ItemDataAsset->WeaponClass)
-			{
-				weaponClass = WeaponPickup->ItemDataAsset->WeaponClass;
-			}
 		}
 
 		if (IsValid(BaseWeapon))
@@ -1625,7 +1772,37 @@ void ABaseCharacter::ItemEquip(AActor* Actor)
 				WeaponSlots->AddWeapon(WeaponPickup);
 			FInventorySlotEntry slot = InventoryComponent->GetItem(WeaponPickup->ItemDataAsset->ItemName);
 			slot.bIsEquipped = true;
-			InventoryComponent->OnItemDataAdded.Broadcast(slot, slot.CurrentBind, false);
+			if (Slot)
+			{
+				slot.Ammo = Slot->Ammo;
+				ABaseBlaster* blaster = Cast<ABaseBlaster>(BaseWeapon);
+				blaster->currentAmmo = slot.Ammo;
+				blaster->MaxAmmo = slot.ItemData->MaxAmmo;
+			}
+				
+			else if (ABaseBlaster* blaster = Cast<ABaseBlaster>(BaseWeapon))
+			{
+				if(blaster->currentAmmo!= -1)
+					slot.Ammo = blaster->currentAmmo;
+				else
+				{
+					blaster->currentAmmo = slot.Ammo;
+					blaster->MaxAmmo = slot.ItemData->MaxAmmo;
+				}
+			}
+			InventoryComponent->ChangeItemValue(slot, slot.CurrentBind);
+			if (slot.Ammo > 0)
+			{
+				if (bFinishedBeginPlay)
+				{
+					bFinishedBeginPlay = false;
+					OnAmmoChanged.Broadcast(slot.Ammo, slot.ItemData->MaxAmmo, true);
+					bFinishedBeginPlay = true;
+				}
+				
+			}
+				
+			/*InventoryComponent->OnItemDataAdded.Broadcast(slot, slot.CurrentBind, false);
 			UE_LOG(
 				LogTemp,
 				Warning,
@@ -1633,7 +1810,7 @@ void ABaseCharacter::ItemEquip(AActor* Actor)
 				*GetNameSafe(BaseWeapon),
 				WeaponPickup->GetInventorySlot(),
 				bAddedToWeaponSlots ? TEXT("true") : TEXT("false")
-			);
+			);*/
 			return;
 		}
 
@@ -1658,7 +1835,9 @@ void ABaseCharacter::SavePlayerData()
 	UPlayerSaveGame* saveData = UPlayerSaveGame::LoadPlayerData();
 	if (saveData)
 	{
-		saveData->SavePlayerData(HealthComponent->GetCurrentHealth(), ExperienceComponent->GetExperiencePoints(), ExperienceComponent->GetLevel(), ExperienceComponent->GetSkillPoints(), InventoryComponent->GetInventory(), WeaponSlots->GetEquippedSlot());
+		saveData->SavePlayerData(HealthComponent->GetCurrentHealth(), ExperienceComponent->GetMaxExperiencePoints(), 
+			ExperienceComponent->GetExperiencePoints(), ExperienceComponent->GetLevel(), ExperienceComponent->GetSkillPoints(), 
+			InventoryComponent->GetInventory(), WeaponSlots->GetEquippedSlot(), InventoryWidget->SkillTreePath, InventoryWidget->skillSelection);
 	}
 	HideHuds();
 }
@@ -1669,18 +1848,22 @@ void ABaseCharacter::LoadPlayerData()
 	if (saveData)
 	{
 		ExperienceComponent->SetLevel(saveData->Level);
-		ExperienceComponent->SetExperiencePoints(saveData->Experience);
+		ExperienceComponent->SetMaxExperiencePoints(saveData->MaxExperience);
+		ExperienceComponent->AddExperience(saveData->Experience);
 		ExperienceComponent->SetSkillPoints(saveData->SkillPoints);
 		HealthComponent->SetCurrentHealth(saveData->currentHealth);
 		for (FInventorySlotEntry slot : saveData->Inventory)
 		{
 			if (slot.ItemData)
 			{
-				//InventoryComponent->AddItem(slot.ItemData);
-				FActorSpawnParameters Params;
-				Params.Instigator = this;
-				Params.Owner = this;
-				AActor* SpawnedActor = GetWorld()->SpawnActor<AActor>(
+				
+				
+				if (!slot.ItemData->bIsAmmo)
+				{
+					FActorSpawnParameters Params;
+					Params.Instigator = this;
+					Params.Owner = this;
+					AActor* SpawnedActor = GetWorld()->SpawnActor<AActor>(
 					slot.ItemData->BlueprintClass,
 					this->GetActorLocation(),
 					this->GetActorRotation(),
@@ -1688,86 +1871,102 @@ void ABaseCharacter::LoadPlayerData()
 				);
 				if (SpawnedActor)
 				{
-					ItemEquip(SpawnedActor);
-					if (Cast<ABaseBlaster>(SpawnedActor))
+					if (ABaseBlaster* blaster = Cast<ABaseBlaster>(SpawnedActor))
 					{
-						Cast<ABaseBlaster>(SpawnedActor)->setCurrAmmo(slot.ItemData->Ammo);
+						ItemEquip(SpawnedActor,&slot);
 					}
+					else
+					{
+						ItemEquip(SpawnedActor);
+					}
+					
 				}
+				}
+				else
+				{
+					InventoryComponent->AddItem(slot.ItemData);
+						FInventorySlotEntry newSlot = InventoryComponent->GetItem(slot.ItemData->ItemName);
+						InventoryComponent->RemoveItemsByAmount(slot.ItemData->ItemName, newSlot.Quantity - slot.Quantity);
+					
+					
+					
+				}
+
 			}
 
 		}
 		EquipWeaponSlot(saveData->currentEquippedSlot);
 	}
+	InventoryWidget->LoadSkillTreeDelegate.Broadcast(saveData->SkillTreePath, saveData->SkillTreeSelections);
 	bFinishedBeginPlay = true;
 }
 
 
-void ABaseCharacter::ShowExperienceHUD()
-{
-	if (bExperienceBarShown)
-	{
-		return;
-	}
-
-	if (!GEngine || !GEngine->GameViewport)
-	{
-		return;
-	}
-
-	static FSlateColorBrush ExperienceBarBackgroundBrush(FLinearColor(0.35f, 0.2f, 0.0f, 1.0f));
-
-	ExperienceSlateWidget =
-		SNew(SOverlay)
-		+ SOverlay::Slot()
-		.HAlign(HAlign_Left)
-		.VAlign(VAlign_Bottom)
-		.Padding(FMargin(30.f, 0.f, 0.f, 30.f))
-		[
-			SNew(SVerticalBox)
-				+ SVerticalBox::Slot()
-				.AutoHeight()
-				.Padding(FMargin(0.f, 0.f, 0.f, 4.f))
-				[
-					SNew(STextBlock)
-						.Text_Lambda([this]() { return GetExperienceText(); })
-						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 16))
-						.ColorAndOpacity(FLinearColor::White)
-				]
-				+ SVerticalBox::Slot()
-				.AutoHeight()
-				[
-					SNew(SBox)
-						.WidthOverride(250.f)
-						.HeightOverride(16.f)
-						[
-							SNew(SProgressBar)
-								.Percent_Lambda([this]() { return TOptional<float>(GetExperiencePercent()); })
-								.FillColorAndOpacity(FLinearColor(0.1f, 0.6f, 0.9f, 1.f))
-								.BackgroundImage(&ExperienceBarBackgroundBrush)
-						]
-				]
-		];
-
-	GEngine->GameViewport->AddViewportWidgetContent(ExperienceSlateWidget.ToSharedRef());
-	bExperienceBarShown = true;
-}
-
-void ABaseCharacter::HideExperienceHUD()
-{
-	if (!bExperienceBarShown)
-	{
-		return;
-	}
-
-	if (GEngine && GEngine->GameViewport && ExperienceSlateWidget.IsValid())
-	{
-		GEngine->GameViewport->RemoveViewportWidgetContent(ExperienceSlateWidget.ToSharedRef());
-	}
-
-	ExperienceSlateWidget.Reset();
-	bExperienceBarShown = false;
-}
+//void ABaseCharacter::ShowExperienceHUD()
+//{
+//	if (bExperienceBarShown)
+//	{
+//		return;
+//	}
+//
+//	if (!GEngine || !GEngine->GameViewport)
+//	{
+//		return;
+//	}
+//
+//	static FSlateColorBrush ExperienceBarBackgroundBrush(FLinearColor(0.35f, 0.2f, 0.0f, 1.0f));
+//
+//	ExperienceSlateWidget =
+//		SNew(SOverlay)
+//		+ SOverlay::Slot()
+//		.HAlign(HAlign_Left)
+//		.VAlign(VAlign_Bottom)
+//		.Padding(FMargin(30.f, 0.f, 0.f, 30.f))
+//		[
+//			SNew(SVerticalBox)
+//				+ SVerticalBox::Slot()
+//				.AutoHeight()
+//				.Padding(FMargin(0.f, 0.f, 0.f, 4.f))
+//				[
+//					SNew(STextBlock)
+//						.Text_Lambda([this]() { return GetExperienceText(); })
+//						.Font(FCoreStyle::GetDefaultFontStyle("Regular", 16))
+//						.ColorAndOpacity(FLinearColor::White)
+//				]
+//				+ SVerticalBox::Slot()
+//				.AutoHeight()
+//				[
+//					SNew(SBox)
+//						.WidthOverride(250.f)
+//						.HeightOverride(16.f)
+//						[
+//							SNew(SProgressBar)
+//								.Percent_Lambda([this]() { return TOptional<float>(GetExperiencePercent()); })
+//								.FillColorAndOpacity(FLinearColor(0.1f, 0.6f, 0.9f, 1.f))
+//								.BackgroundImage(&ExperienceBarBackgroundBrush)
+//						]
+//				]
+//		];
+//
+//	GEngine->GameViewport->AddViewportWidgetContent(ExperienceSlateWidget.ToSharedRef());
+//	bExperienceBarShown = true;
+//}
+//
+//void ABaseCharacter::HideExperienceHUD()
+//{
+//	if (!bExperienceBarShown)
+//	{
+//		return;
+//	}
+//
+//	if (GEngine && GEngine->GameViewport && ExperienceSlateWidget.IsValid())
+//	{
+//		GEngine->GameViewport->RemoveViewportWidgetContent(ExperienceSlateWidget.ToSharedRef());
+//	}
+//
+//	ExperienceSlateWidget.Reset();
+//	bExperienceBarShown = false;
+//}
 void ABaseCharacter::ShowMiniMapHUD()
 {
 	if (!MiniMapWidget)
@@ -1785,6 +1984,61 @@ void ABaseCharacter::HideMiniMapHUD()
 		return;
 	}
 	MiniMapWidget->SetVisibility(ESlateVisibility::Hidden);
+}
+
+void ABaseCharacter::ShowPlayerHUD()
+{
+	if (PlayerHUDClass)
+	{
+		PlayerHUDWidget = CreateWidget<UPlayerHUDWidget>(GetWorld(), PlayerHUDClass);
+		if (PlayerHUDWidget)
+		{
+			PlayerHUDWidget->AddToViewport(-1);
+			PlayerHUDWidget->SetVisibility(ESlateVisibility::Visible);
+			OnHealthChanged.AddDynamic(PlayerHUDWidget, &UPlayerHUDWidget::UpdateHealth);
+			OnXPChanged.AddDynamic(PlayerHUDWidget, &UPlayerHUDWidget::UpdateXP);
+			OnAmmoChanged.AddDynamic(PlayerHUDWidget, &UPlayerHUDWidget::UpdateAmmo);
+			OnHealthChanged.Broadcast(HealthComponent->GetCurrentHealth(), HealthComponent->GetMaxHealth());
+			OnXPChanged.Broadcast(ExperienceComponent->GetExperiencePoints(), ExperienceComponent->GetMaxExperiencePoints(),ExperienceComponent->GetLevel());
+			if (weapon)
+			{
+				UWeaponPickup* pickup = weapon->GetComponentByClass<UWeaponPickup>();
+				if (pickup->ItemDataAsset->AmmoType)
+				{
+					FInventorySlotEntry slot = InventoryComponent->GetItem(pickup->ItemDataAsset->ItemName);
+						if (slot.IsValidEntry())
+						{
+							if (ABaseBlaster* blaster = Cast<ABaseBlaster>(weapon))
+							{
+								OnAmmoChanged.Broadcast(slot.Ammo,blaster->MaxAmmo, true);
+							}
+							
+						}
+						else
+						{
+							OnAmmoChanged.Broadcast(0, 0, false);
+						}
+				}
+				else
+				{
+					OnAmmoChanged.Broadcast(0, 0, false);
+				}
+			}
+			else
+			{
+				OnAmmoChanged.Broadcast(0, 0, false);
+			}
+			
+		}
+	}
+}
+
+void ABaseCharacter::HidePlayerHUD()
+{
+	if (PlayerHUDWidget)
+	{
+		PlayerHUDWidget->SetVisibility(ESlateVisibility::Hidden);
+	}
 }
 
 

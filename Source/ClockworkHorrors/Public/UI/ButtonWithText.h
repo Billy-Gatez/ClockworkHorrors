@@ -10,7 +10,11 @@
  * 
  */
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FButtonDelegate);
-
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
+	FButtonWithSourceDelegate,
+	UButtonWithText*,
+	ClickedButton
+);
 UCLASS()
 class CLOCKWORKHORRORS_API UButtonWithText : public UUserWidget
 {
@@ -24,7 +28,8 @@ public:
 
 	UPROPERTY(BlueprintAssignable, BlueprintCallable, Category = "Variables")
 	FButtonDelegate InternalButtonClicked;
-
+	UPROPERTY(BlueprintAssignable, Category = "Variables")
+	FButtonWithSourceDelegate InternalButtonClickedWithSource;
 protected:
 
 	UPROPERTY(BlueprintReadWrite, meta = (BindWidget))
@@ -35,7 +40,10 @@ protected:
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Variables")
 	FText Info;
-
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Variables")
+	 class UImage* Image;
+	 UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Variables")
+	 UTexture2D* texture;
 private:
 	UFUNCTION()
 	void HandleButtonClicked();

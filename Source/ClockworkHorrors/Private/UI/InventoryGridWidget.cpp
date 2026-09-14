@@ -192,10 +192,13 @@ void UInventoryGridWidget::RemoveItemFromSlot(FName ItemName, int32 Quantity, in
 		UE_LOG(LogTemp, Warning, TEXT("UInventoryGrid: Slot Index %d is out of bounds! Cannot remove item %s with Quantity %d"), SlotIndex, *ItemName.ToString(), Quantity);
 		return;
 	}
-
-	InventorySlotWidgets[SlotIndex]->ClearSlot();
-	InventorySlotWidgets[SlotIndex]->SetVisibility(ESlateVisibility::Hidden);
-	ItemNameToSlotWidgetMap.Remove(SlotIndex);
+	if (InventorySlotWidgets[SlotIndex]->RemoveQuantityFromSlot(Quantity))
+	{
+		InventorySlotWidgets[SlotIndex]->ClearSlot();
+		InventorySlotWidgets[SlotIndex]->SetVisibility(ESlateVisibility::Hidden);
+		ItemNameToSlotWidgetMap.Remove(SlotIndex);
+	}
+	
 }
 
 bool UInventoryGridWidget::CanIncreaseSlotCount(int32 NewSlotCount) const

@@ -22,6 +22,14 @@ enum class ELingeringFieldShape : uint8
 	Square UMETA(DisplayName = "Square")
 };
 
+UENUM(BlueprintType)
+enum class EGravityActivationMode : uint8
+{
+	OnImpact UMETA(DisplayName = "On Impact"),
+	AfterTime UMETA(DisplayName = "After Time"),
+	OnRecast UMETA(DisplayName = "On Recast")
+};
+
 UCLASS(Blueprintable)
 class CLOCKWORKHORRORS_API ASpells : public AActor
 {
@@ -40,6 +48,21 @@ public:
 		meta = (ClampMin = "0.0"))
 	float CastCooldownSeconds;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spell|Mana")
+	bool bUsesMana;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spell|Mana", meta = (EditCondition = "bUsesMana", EditConditionHides, ClampMin = "0.0"))
+	float ManaCost;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spell|Mana|Charging", meta = (EditCondition = "bUsesMana && bChargeableSpell", EditConditionHides))
+	bool bChargeAffectsManaCost;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spell|Mana|Charging", meta = (EditCondition = "bUsesMana && bChargeableSpell && bChargeAffectsManaCost", EditConditionHides, ClampMin = "0.0"))
+	float MinimumChargeManaCostMultiplier;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spell|Mana|Charging", meta = (EditCondition = "bUsesMana && bChargeableSpell && bChargeAffectsManaCost", EditConditionHides, ClampMin = "0.0"))
+	float MaximumChargeManaCostMultiplier;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spell|Projectile", meta = (EditCondition = "CastForm == ESpellCastForm::Projectile", EditConditionHides, ClampMin = "0.0"))
 	float MaximumTravelDistance;
 
@@ -52,11 +75,90 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spell|Projectile", meta = (EditCondition = "CastForm == ESpellCastForm::Projectile", EditConditionHides, ClampMin = "0.1"))
 	float ProjectileExistenceSeconds;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spell|Projectile|Lifetime", meta = (EditCondition = "CastForm == ESpellCastForm::Projectile", EditConditionHides))
+	bool bLastsWhileCasterHasMana;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spell|Projectile", meta = (EditCondition = "CastForm == ESpellCastForm::Projectile", EditConditionHides, ClampMin = "0.0"))
 	float ProjectileGravityStrength;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spell|Projectile", meta = (EditCondition = "CastForm == ESpellCastForm::Projectile", EditConditionHides))
 	TSubclassOf<ASpellProjectile> ProjectileActorClass;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spell|Projectile|Scale Over Time", meta = (EditCondition = "CastForm == ESpellCastForm::Projectile", EditConditionHides))
+	bool bProjectileScaleChangesOverTime;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spell|Projectile|Scale Over Time", meta = (EditCondition = "bProjectileScaleChangesOverTime", EditConditionHides, ClampMin = "0.01"))
+	float ProjectileStartingScale;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spell|Projectile|Scale Over Time", meta = (EditCondition = "bProjectileScaleChangesOverTime", EditConditionHides, ClampMin = "0.01"))
+	float ProjectileEndingScale;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spell|Projectile|Scale Over Time", meta = (EditCondition = "bProjectileScaleChangesOverTime", EditConditionHides, ClampMin = "0.01"))
+	float ProjectileScaleChangeDuration;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spell|Projectile|Scale Over Time", meta = (EditCondition = "bProjectileScaleChangesOverTime", EditConditionHides))
+	bool bProjectileScaleAffectsCollision;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spell|Projectile|Scale Over Time", meta = (EditCondition = "bProjectileScaleChangesOverTime", EditConditionHides))
+	bool bProjectileScaleAffectsDamage;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spell|Projectile|Scale Over Time", meta = (EditCondition = "bProjectileScaleChangesOverTime && bProjectileScaleAffectsDamage", EditConditionHides, ClampMin = "0.0"))
+	float ProjectileStartingDamageMultiplier;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spell|Projectile|Scale Over Time", meta = (EditCondition = "bProjectileScaleChangesOverTime && bProjectileScaleAffectsDamage", EditConditionHides, ClampMin = "0.0"))
+	float ProjectileEndingDamageMultiplier;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spell|Projectile|Behavior", meta = (EditCondition = "CastForm == ESpellCastForm::Projectile", EditConditionHides))
+	bool bAllowProjectileRiding;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spell|Projectile|Redirect", meta = (EditCondition = "CastForm == ESpellCastForm::Projectile", EditConditionHides))
+	bool bRedirectableProjectile;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spell|Projectile|Redirect", meta = (EditCondition = "bRedirectableProjectile", EditConditionHides, ClampMin = "0.0"))
+	float RedirectManaDrainPerSecond;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spell|Projectile|Redirect", meta = (EditCondition = "bRedirectableProjectile", EditConditionHides))
+	bool bBlocksManaRecoveryWhileActive;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spell|Projectile|Redirect", meta = (EditCondition = "bRedirectableProjectile", EditConditionHides, ClampMin = "100.0"))
+	float RedirectAimTraceDistance;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spell|Projectile|Redirect", meta = (EditCondition = "bRedirectableProjectile", EditConditionHides))
+	bool bShowRedirectAimLine;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spell|Projectile|Redirect", meta = (EditCondition = "bRedirectableProjectile && bShowRedirectAimLine", EditConditionHides, ClampMin = "0.1"))
+	float RedirectAimLineThickness;
+
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spell|Projectile|Gravity", meta = (DisplayName = "Gravity", EditCondition = "CastForm == ESpellCastForm::Projectile", EditConditionHides))
+	bool bCreatesGravity;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spell|Projectile|Gravity", meta = (EditCondition = "bCreatesGravity", EditConditionHides))
+	EGravityActivationMode GravityActivationMode;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spell|Projectile|Gravity", meta = (EditCondition = "bCreatesGravity && GravityActivationMode == EGravityActivationMode::AfterTime", EditConditionHides, ClampMin = "0.0"))
+	float GravityActivationDelaySeconds;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spell|Projectile|Gravity", meta = (EditCondition = "bCreatesGravity", EditConditionHides, ClampMin = "1.0"))
+	float GravityRadius;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spell|Projectile|Gravity", meta = (EditCondition = "bCreatesGravity", EditConditionHides, ClampMin = "0.0"))
+	float GravityPullStrength;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spell|Projectile|Gravity", meta = (EditCondition = "bCreatesGravity", EditConditionHides, ClampMin = "0.1"))
+	float GravityLifetime;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spell|Projectile|Gravity", meta = (EditCondition = "bCreatesGravity", EditConditionHides))
+	bool bGravityDisablesEnemyActions;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spell|Projectile|Gravity", meta = (EditCondition = "bCreatesGravity", EditConditionHides))
+	bool bGravityLocksAtCenter;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spell|Projectile|Gravity", meta = (EditCondition = "bCreatesGravity && bGravityLocksAtCenter", EditConditionHides, ClampMin = "1.0"))
+	float GravityCenterLockRadius;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spell|Projectile|Gravity", meta = (EditCondition = "bCreatesGravity", EditConditionHides))
+	bool bShowGravityRadius;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spell|Projectile|Behavior", meta = (EditCondition = "CastForm == ESpellCastForm::Projectile", EditConditionHides))
 	bool bProjectilePierces;
@@ -186,6 +288,9 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Spell")
 	bool LaunchesProjectile() const;
+
+	UFUNCTION(BlueprintPure, Category = "Spell|Mana")
+	float GetManaCostForCharge(float ChargePercent) const;
 
 	UFUNCTION(BlueprintPure, Category = "Spell")
 	bool ProducesLingeringField() const;

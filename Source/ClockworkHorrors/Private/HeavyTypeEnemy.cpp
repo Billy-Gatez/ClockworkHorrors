@@ -2,6 +2,8 @@
 
 #include "HeavyTypeEnemy.h"
 
+#include "EnemyVisuals/EnemyAuraComponent.h"
+
 #include "BaseCharacter.h"
 #include "Engine/DamageEvents.h"
 
@@ -27,6 +29,18 @@ AHeavyTypeEnemy::AHeavyTypeEnemy()
 	KnockbackForce = 900.0f;
 
 	KnockbackUpForce = 250.0f;
+
+
+	// ---------------------------------------------------------
+	// ENEMY TYPE VISUAL
+	// ---------------------------------------------------------
+
+	if (EnemyAuraComponent)
+	{
+		EnemyAuraComponent->SetAuraType(
+			EEnemyAuraType::Heavy
+		);
+	}
 }
 
 
@@ -36,79 +50,22 @@ AHeavyTypeEnemy::AHeavyTypeEnemy()
 
 void AHeavyTypeEnemy::PerformAttack()
 {
-	if (!TargetActor)
-	{
-		return;
-	}
-
-
-	ABaseCharacter* PlayerCharacter =
-		Cast<ABaseCharacter>(TargetActor);
-
-
-	if (!PlayerCharacter)
-	{
-		return;
-	}
-
-
-	bCanDealDamage = true;
-
-
-	// =========================================================
-	// DAMAGE
-	// =========================================================
-
-	PlayerCharacter->TakeDamage(
-		AttackDamage,
-		FDamageEvent(),
-		GetController(),
-		this
-	);
-
-
-	// =========================================================
-	// KNOCKBACK
-	// =========================================================
-
-	FVector KnockbackDirection =
-		PlayerCharacter->GetActorLocation() -
-		GetActorLocation();
-
-
-	KnockbackDirection.Z = 0.0f;
-
-
-	if (!KnockbackDirection.IsNearlyZero())
-	{
-		KnockbackDirection.Normalize();
-
-
-		FVector LaunchVelocity =
-			KnockbackDirection *
-			KnockbackForce;
-
-
-		LaunchVelocity.Z =
-			KnockbackUpForce;
-
-
-		PlayerCharacter->LaunchCharacter(
-			LaunchVelocity,
-			true,
-			true
-		);
-	}
-
-
-	UE_LOG(
-		LogTemp,
-		Log,
-		TEXT("%s performed HEAVY attack for %.2f damage."),
-		*GetName(),
-		AttackDamage
-	);
-
+	Super::PerformAttack();
 
 	OnHeavyAttack();
+}
+
+UStatusEffectType* AHeavyTypeEnemy::GetStatusEffectPayload(AActor* Target) const
+{
+	UStatusEffectType* StatusEffect = NewObject<UStatusEffectType>();
+
+	StatusEffect->Effect = STATUSEFFECT::KnockBack;
+	StatusEffect->Duration = KnockbackUpForce;
+	StatusEffect->TickDamage = KnockbackForce;
+	StatusEffect->TickInterval = 0;
+	StatusEffect->Percentage = 0.0f; 
+
+	StatusEffect->KnockbackDirection = GetActorForwardVector();
+
+	return StatusEffect;
 }

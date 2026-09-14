@@ -22,7 +22,8 @@ struct FInventorySlotEntry
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Inventory")
 	int32 Quantity = 0;
-
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Inventory")
+	int Ammo;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Inventory")
 	bool bIsEquipped = false;
 

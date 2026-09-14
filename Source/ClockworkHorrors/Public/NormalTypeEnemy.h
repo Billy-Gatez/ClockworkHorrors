@@ -16,4 +16,6 @@ class CLOCKWORKHORRORS_API ANormalTypeEnemy : public AEnemy
 public:
 
 	ANormalTypeEnemy();
+
+	virtual UStatusEffectType* GetStatusEffectPayload(AActor* Target = nullptr) const override;
 };

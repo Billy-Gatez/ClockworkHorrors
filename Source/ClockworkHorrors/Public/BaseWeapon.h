@@ -39,9 +39,18 @@ public:
 
 	UPROPERTY(BlueprintReadOnly, VisibleAnywhere)
 	class UStaticMeshComponent* staticMesh;
-
+	UPROPERTY(BlueprintReadOnly, VisibleAnywhere)
 	APawn* ParentPawn;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interact")
+	class USphereComponent* InteractRangeSphere;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interact")
+	float InteractRange = 200.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interact")
+	class UWidgetComponent* InteractWidget;
+	void SetDamage(float NewDamage) { damage = NewDamage; }
 protected:
 	virtual void BeginPlay() override;
 
@@ -51,6 +60,24 @@ protected:
 
 	UFUNCTION()
 	void HandleWeaponEquippedStateChanged(bool bWeaponEquipped);
+
+	UFUNCTION()
+	void HandleOverlapBegin(
+		UPrimitiveComponent* OverlappedComponent,
+		AActor* OtherActor,
+		UPrimitiveComponent* OtherComp,
+		int32 OtherBodyIndex,
+		bool bFromSweep,
+		const FHitResult& SweepResult
+	);
+
+	UFUNCTION()
+	void HandleOverlapEnd(
+		UPrimitiveComponent* OverlappedComponent,
+		AActor* OtherActor,
+		UPrimitiveComponent* OtherComp,
+		int32 OtherBodyIndex
+	);
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Weapon")
 	float damage = 10.0f;
@@ -70,4 +97,5 @@ public:
 
 	bool bPickedUp;
 	bool ActionHappening;
+	void CalculateNewDamage();
 };

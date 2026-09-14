@@ -11,7 +11,8 @@
 #include "Interfaces/PlayerInterface.h"
 #include "Utils/StatusEffectType.h"
 #include "Interfaces/StatusEffectSource.h"
-
+#include "Interfaces/EnemyInterface.h"
+#include "Engine/DamageEvents.h"
 
 #if WITH_EDITOR
 #include "UObject/UnrealType.h"
@@ -123,18 +124,7 @@ void UHealthComponent::OnOwnerTakeAnyDamage(
 		return;
 	}
 
-	IPlayerInterface* PlayerInterface = Cast<IPlayerInterface>(DamagedActor);
-	if (PlayerInterface)
-	{
-		PlayerInterface->UpdateCompanionTarget(DamageCauser, Damage);
-	}
-	else {
-		ICompanionInterface* CompanionInterface = Cast<ICompanionInterface>(DamagedActor);
-		if (CompanionInterface)
-		{
-			CompanionInterface->UpdateTarget(DamageCauser, Damage);
-		}
-	}
+
 
 
 	// Damage interrupts regeneration and resets the delay.
@@ -164,13 +154,30 @@ void UHealthComponent::OnOwnerTakeAnyDamage(
 		IStatusEffectSource* Source = Cast<IStatusEffectSource>(DamageCauser);
 		if (Source)
 		{
-			UStatusEffectType* Payload = Source->GetStatusEffectPayload();
-			if (Payload && Payload->Effect != STATUSEFFECT::None)
+
+			for (UStatusEffectType* Payload = Source->GetStatusEffectPayload(DamagedActor); Payload != nullptr; Payload = Payload->NextStatusEffect)
 			{
-				ApplyStatusEffect(*Payload);
+				if (Payload && Payload->Effect != STATUSEFFECT::None)
+				{
+					UE_LOG(LogTemp, Log, TEXT("%s is applying status effect %s to %s"), *DamageCauser->GetName(), *UEnum::GetValueAsString(Payload->Effect), *DamagedActor->GetName());
+					ApplyStatusEffect(*Payload);
+				}
 			}
 		}
-	
+
+	IPlayerInterface* PlayerInterface = Cast<IPlayerInterface>(DamagedActor);
+	if (PlayerInterface)
+	{
+		PlayerInterface->UpdatePlayerHUDHP(CurrentHealth, MaxHealth);
+		PlayerInterface->UpdateCompanionTarget(DamageCauser, Damage);
+	}
+	else {
+		ICompanionInterface* CompanionInterface = Cast<ICompanionInterface>(DamagedActor);
+		if (CompanionInterface)
+		{
+			CompanionInterface->UpdateTarget(DamageCauser, Damage);
+		}
+	}
 
 	// ---------------------------------------------------------
 	// DEATH
@@ -307,6 +314,22 @@ void UHealthComponent::Heal(float HealAmount)
 		PreviousHealth,
 		CurrentHealth
 	);
+
+	IPlayerInterface* PlayerInterface = Cast<IPlayerInterface>(GetOwner());
+	if (PlayerInterface)
+	{
+		PlayerInterface->UpdatePlayerHUDHP(CurrentHealth, MaxHealth);
+	}
+}
+
+void UHealthComponent::SetMaxHealth(float health)
+{
+	MaxHealth = health;
+	IPlayerInterface* PlayerInterface = Cast<IPlayerInterface>(GetOwner());
+	if (PlayerInterface)
+	{
+		PlayerInterface->UpdatePlayerHUDHP(CurrentHealth, MaxHealth);
+	}
 }
 
 
@@ -485,46 +508,65 @@ void UHealthComponent::PostEditChangeProperty(
 
 void UHealthComponent::ApplyStatusEffect(const UStatusEffectType& Payload)
 {
-	switch (Payload.Effect)
+	IPlayerInterface* PlayerInterface = Cast<IPlayerInterface>(GetOwner());
+	if (PlayerInterface)
 	{
-	case STATUSEFFECT::Poisoned:
-		StartPoisonEffect(Payload.TickDamage, Payload.TickInterval, Payload.Duration);
-		break;
+		
+		switch (Payload.Effect)
+		{
+		case STATUSEFFECT::Poisoned:
+			StartPoisonEffect(Payload.TickDamage, Payload.TickInterval, Payload.Duration);
+			break;
 
-	case STATUSEFFECT::Burning:
-		StartBurningEffect(Payload.TickDamage, Payload.TickInterval, Payload.Duration);
-		break;
+		case STATUSEFFECT::Burning:
+			StartBurningEffect(Payload.TickDamage, Payload.TickInterval, Payload.Duration);
+			break;
 
-	case STATUSEFFECT::Stunned:
-		StunDuration = FMath::Max(StunDuration, Payload.Duration);
-		break;
+		case STATUSEFFECT::Stunned:
+			PlayerInterface->UpdatePlayerHUDStatuses(FName("Stun"), Payload.Duration, -1);
+			break;
 
-	case STATUSEFFECT::Slowed:
-		SlowDuration = FMath::Max(SlowDuration, Payload.Duration);
-		SlowPercentage = FMath::Max(SlowPercentage, Payload.Percentage);
-		break;
+		case STATUSEFFECT::Slowed:
+			PlayerInterface->UpdatePlayerHUDStatuses(FName("Slow"), Payload.Duration, Payload.Percentage);
+			break;
 
-	case STATUSEFFECT::Weakened:
-		WeakenDuration = FMath::Max(WeakenDuration, Payload.Duration);
-		WeakenPercentage = FMath::Max(WeakenPercentage, Payload.Percentage);
-		break;
+		case STATUSEFFECT::Weakened:
+			PlayerInterface->UpdatePlayerHUDStatuses(FName("Weaken"), Payload.Duration, Payload.Percentage);
+			break;
 
-	default:
-		break;
+		case STATUSEFFECT::KnockBack:
+			PlayerInterface->UpdatePlayerHUDStatuses(FName("KnockBack"), Payload.TickDamage, Payload.Duration, Payload.KnockbackDirection);
+			break;
+		default:
+			break;
+		}
 	}
 }
 
 void UHealthComponent::StartPoisonEffect(float TickDamage, float TickInterval, float Duration)
 {
+	UE_LOG(LogTemp, Log, TEXT("%s is poisoned for %.2f damage every %.2f seconds for %.2f seconds."),
+		GetOwner() ? *GetOwner()->GetName() : TEXT("Unknown"),
+		TickDamage, TickInterval, Duration);
 	if (TickDamage <= 0.0f || Duration <= 0.0f)
 	{
 		return;
 	}
 
+	IPlayerInterface* PlayerInterface = Cast<IPlayerInterface>(GetOwner());
+	if (PlayerInterface)
+	{
+		PlayerInterface->UpdatePlayerHUDStatuses(FName("Poison"), Duration, -1);
+	}
+
 	PoisonTickDamage = TickDamage;
 	PoisonTickInterval = FMath::Max(0.05f, TickInterval);
 	PoisonRemainingDuration = Duration;
-
+	if (Cast<ABaseCharacter>(GetOwner()))
+	{
+		ABaseCharacter* player = Cast<ABaseCharacter>(GetOwner());
+		player->OnHealthBarColorChanged.Broadcast(FLinearColor(0.5f, 1.0f, 0.0f, 1.0f));
+	}
 	if (GetWorld())
 	{
 		GetWorld()->GetTimerManager().ClearTimer(TimerHandle_PoisonTick);
@@ -542,7 +584,11 @@ void UHealthComponent::StopPoisonEffect()
 		GetWorld()->GetTimerManager().ClearTimer(TimerHandle_PoisonTick);
 		GetWorld()->GetTimerManager().ClearTimer(TimerHandle_PoisonDuration);
 	}
-
+	if (Cast<ABaseCharacter>(GetOwner()))
+	{
+		ABaseCharacter* player = Cast<ABaseCharacter>(GetOwner());
+		player->OnHealthBarColorChanged.Broadcast(player->GetOriginalHealthBarColor());
+	}
 	PoisonTickDamage = 0.0f;
 	PoisonRemainingDuration = 0.0f;
 }
@@ -558,7 +604,7 @@ void UHealthComponent::OnPoisonTick()
 	if (PoisonTickDamage > 0.0f)
 	{
 		const float Prev = CurrentHealth;
-		CurrentHealth = FMath::Clamp(CurrentHealth - PoisonTickDamage, 0.0f, MaxHealth);
+		GetOwner()->TakeDamage(PoisonTickDamage, FDamageEvent(), nullptr, nullptr);
 
 		UE_LOG(LogTemp, Log, TEXT("%s poisoned for %.2f. Health: %.2f -> %.2f"),
 			GetOwner() ? *GetOwner()->GetName() : TEXT("Unknown"),
@@ -580,10 +626,15 @@ void UHealthComponent::StartBurningEffect(float TickDamage, float TickInterval, 
 		return;
 	}
 
+	IPlayerInterface* PlayerInterface = Cast<IPlayerInterface>(GetOwner());
+	if (PlayerInterface)
+	{
+		PlayerInterface->UpdatePlayerHUDStatuses(FName("Burn"), Duration, -1);
+	}
+
 	BurningTickDamage = TickDamage;
 	BurningTickInterval = FMath::Max(0.05f, TickInterval);
 	BurningRemainingDuration = Duration;
-
 	if (GetWorld())
 	{
 		GetWorld()->GetTimerManager().ClearTimer(TimerHandle_BurningTick);
@@ -616,12 +667,11 @@ void UHealthComponent::OnBurningTick()
 
 	if (BurningTickDamage > 0.0f)
 	{
-		const float Prev = CurrentHealth;
-		CurrentHealth = FMath::Clamp(CurrentHealth - BurningTickDamage, 0.0f, MaxHealth);
+		GetOwner()->TakeDamage(BurningTickDamage, FDamageEvent(), nullptr, nullptr);
 
-		UE_LOG(LogTemp, Log, TEXT("%s burning for %.2f. Health: %.2f -> %.2f"),
+		/*UE_LOG(LogTemp, Log, TEXT("%s burning for %.2f."),
 			GetOwner() ? *GetOwner()->GetName() : TEXT("Unknown"),
-			BurningTickDamage, Prev, CurrentHealth);
+			BurningTickDamage);*/
 
 		OnCharacterHurt.Broadcast();
 

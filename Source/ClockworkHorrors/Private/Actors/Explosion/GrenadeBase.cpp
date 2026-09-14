@@ -31,7 +31,7 @@ AGrenadeBase::AGrenadeBase()
 
 	bUseFuseTimer = true;
 	bHasExploded = false;
-
+	bFuseStarted = false;
 }
 
 // Called when the game starts or when spawned
@@ -39,18 +39,16 @@ void AGrenadeBase::BeginPlay()
 {
 	Super::BeginPlay();
 	
-	if (bUseFuseTimer)
-	{
-		StartFuse();
-	}
 }
 
 void AGrenadeBase::StartFuse()
 {
-	if (bHasExploded)
+	if (bHasExploded || bFuseStarted)
 	{
 		return;
 	}
+
+	bFuseStarted = true;
 
 	if (FuseTime <= 0.0f)
 	{
@@ -73,6 +71,11 @@ void AGrenadeBase::ThrowGrenade(const FVector& ThrowDirection)
 	if (Direction.IsNearlyZero())
 	{
 		return;
+	}
+
+	if (bUseFuseTimer)
+	{
+		StartFuse();
 	}
 
 	CollisionComponent->AddImpulse(Direction * ThrowForce, NAME_None, true);

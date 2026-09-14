@@ -34,6 +34,9 @@ protected:
 	UFUNCTION(BlueprintCallable, Category = "Pickup")
 	void OnOverlapBegin(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
 
+	UFUNCTION()
+	void OnOverlapEnd(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Pickup")
 	float PickupRange;
 
@@ -54,6 +57,9 @@ protected:
 	class UStaticMesh* StaticMesh;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Pickup")
 	class USkeletalMesh* SkeletalMesh;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interact")
+	class UWidgetComponent* InteractWidget;
 
 private:
 	bool bIsPickedUp = false;

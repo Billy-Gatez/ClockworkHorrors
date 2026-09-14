@@ -1,6 +1,7 @@
 // Copyright Aluminati Studios Publishing 2026. All Rights Reserved.
 
 #include "ClockworkPlayerController.h"
+#include "Targeting/TargetLockComponent.h"
 #include "BaseCharacter.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
@@ -23,8 +24,33 @@ void AClockworkPlayerController::BeginPlay()
             {
                 InputSubsystem->AddMappingContext(DefaultMappingContext, 0);
             }
+
+            if (TargetLockMappingContext)
+            {
+                InputSubsystem->AddMappingContext(TargetLockMappingContext, 10);
+            }
         }
     }
+}
+
+void AClockworkPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+    // LocalPlayer can survive level travel. Remove the production target-lock
+    // context when this controller leaves the world so mappings cannot leak
+    // into a controller/map that does not use them.
+    if (ULocalPlayer* LocalPlayer = GetLocalPlayer())
+    {
+        if (UEnhancedInputLocalPlayerSubsystem* InputSubsystem =
+            LocalPlayer->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>())
+        {
+            if (TargetLockMappingContext)
+            {
+                InputSubsystem->RemoveMappingContext(TargetLockMappingContext);
+            }
+        }
+    }
+
+    Super::EndPlay(EndPlayReason);
 }
 
 void AClockworkPlayerController::SetupInputComponent()
@@ -251,6 +277,59 @@ void AClockworkPlayerController::SetupInputComponent()
                 &AClockworkPlayerController::ClearInventory
             );
         }
+        if (DebugLevelUpAction)
+        {
+            EnhancedInputComponent->BindAction(
+                DebugLevelUpAction,
+                ETriggerEvent::Triggered, this,
+                &AClockworkPlayerController::LevelUpButton
+            );
+        }
+        if (TargetLockAction)
+        {
+            EnhancedInputComponent->BindAction(
+                TargetLockAction,
+                ETriggerEvent::Started,
+                this,
+                &AClockworkPlayerController::ToggleTargetLock
+            );
+        }
+
+        if (TargetSwitchAction)
+        {
+            // Started switches once per press/threshold crossing instead of
+            // repeatedly switching every frame while an input is held.
+            EnhancedInputComponent->BindAction(
+                TargetSwitchAction,
+                ETriggerEvent::Started,
+                this,
+                &AClockworkPlayerController::HandleTargetSwitch
+            );
+        }
+
+        if (LookAction)
+        {
+            // The normal Look() binding remains active for unlocked gameplay.
+            // While locked, TargetLockComponent blocks AddYaw/AddPitch and this
+            // second binding feeds the same stick value to the bounded combat camera.
+            EnhancedInputComponent->BindAction(
+                LookAction,
+                ETriggerEvent::Triggered,
+                this,
+                &AClockworkPlayerController::HandleLockedCameraLook
+            );
+        }
+
+        if (MouseLookAction)
+        {
+            // Mouse input uses its own delta/sensitivity path in TargetLockComponent.
+            EnhancedInputComponent->BindAction(
+                MouseLookAction,
+                ETriggerEvent::Triggered,
+                this,
+                &AClockworkPlayerController::HandleLockedCameraMouseLook
+            );
+        }
     }
 
 
@@ -294,6 +373,10 @@ void AClockworkPlayerController::Move(const FInputActionValue& Value)
 
 void AClockworkPlayerController::Look(const FInputActionValue& Value)
 {
+    if (IsLookInputIgnored())
+    {
+        return;
+    }
     const FVector2D LookVector = Value.Get<FVector2D>();
     AddYawInput(LookVector.X * LookSensitivity);
     AddPitchInput(LookVector.Y * LookSensitivity);
@@ -301,6 +384,10 @@ void AClockworkPlayerController::Look(const FInputActionValue& Value)
 
 void AClockworkPlayerController::MouseLook(const FInputActionValue& Value)
 {
+    if (IsLookInputIgnored())
+    {
+        return;
+    }
     const FVector2D LookVector = Value.Get<FVector2D>();
     AddYawInput(LookVector.X * MouseSensitivity);
     AddPitchInput(LookVector.Y * MouseSensitivity);
@@ -492,4 +579,70 @@ void AClockworkPlayerController::ClearInventory()
         }
 
     }
+}
+
+void AClockworkPlayerController::LevelUpButton()
+{
+    if (ABaseCharacter* PlayerCharacter = Cast<ABaseCharacter>(GetPawn()))
+    {
+        PlayerCharacter->LevelUpPressed();
+    }
+}
+
+void AClockworkPlayerController::ToggleTargetLock()
+{
+    if (UTargetLockComponent* TargetLock = GetTargetLockComponent())
+    {
+        TargetLock->ToggleTargetLock();
+    }
+}
+
+void AClockworkPlayerController::HandleTargetSwitch(const FInputActionValue& Value)
+{
+    UTargetLockComponent* TargetLock = GetTargetLockComponent();
+    if (!TargetLock || !TargetLock->IsTargetLocked())
+    {
+        return;
+    }
+
+    const float Direction = Value.Get<float>();
+
+    if (Direction < -KINDA_SMALL_NUMBER)
+    {
+        TargetLock->SwitchTargetLeft();
+    }
+    else if (Direction > KINDA_SMALL_NUMBER)
+    {
+        TargetLock->SwitchTargetRight();
+    }
+}
+
+void AClockworkPlayerController::HandleLockedCameraLook(const FInputActionValue& Value)
+{
+    UTargetLockComponent* TargetLock = GetTargetLockComponent();
+    if (!TargetLock || !TargetLock->IsTargetLocked())
+    {
+        return;
+    }
+
+    TargetLock->AddLockedCameraLookInput(Value.Get<FVector2D>());
+}
+
+void AClockworkPlayerController::HandleLockedCameraMouseLook(const FInputActionValue& Value)
+{
+    UTargetLockComponent* TargetLock = GetTargetLockComponent();
+    if (!TargetLock || !TargetLock->IsTargetLocked())
+    {
+        return;
+    }
+
+    TargetLock->AddLockedCameraMouseLookInput(Value.Get<FVector2D>());
+}
+
+UTargetLockComponent* AClockworkPlayerController::GetTargetLockComponent() const
+{
+    const APawn* ControlledPawn = GetPawn();
+    return ControlledPawn
+        ? ControlledPawn->FindComponentByClass<UTargetLockComponent>()
+        : nullptr;
 }

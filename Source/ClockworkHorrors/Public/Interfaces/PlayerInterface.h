@@ -30,4 +30,7 @@ public:
 	virtual float GetCurrentHealth() const = 0;
 	virtual void UpdateCompanionTarget(AActor* NewTarget, float damage) = 0;
 	virtual void HealPlayer(float HealAmount) = 0;
+	virtual void UpdatePlayerHUDHP(float CurrentHealth, float MaxHealth) = 0;
+	virtual void UpdatePlayerHUDXP(float CurrentXP, float MaxXP) = 0;
+	virtual void UpdatePlayerHUDStatuses(FName StatusEffectName, float Duration, float Strength, FVector KnockbackDirection = FVector::ZeroVector) = 0;
 };

@@ -58,4 +58,6 @@ protected:
 		Category = "Enemy|Heavy"
 	)
 	void OnHeavyAttack();
+
+	virtual UStatusEffectType* GetStatusEffectPayload(AActor* Target = nullptr) const override;
 };

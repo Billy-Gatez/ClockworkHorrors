@@ -8,9 +8,16 @@
 #include "NavigationSystem.h"
 #include "Engine/DamageEvents.h"
 #include "Utils/HealthComponent.h"
+#include "Targeting/TargetableComponent.h"
+#include "EnemyVisuals/EnemyAuraComponent.h"
+#include "Components/WidgetComponent.h"
+#include "Blueprint/UserWidget.h"
+#include "UObject/ConstructorHelpers.h"
 #include "AIController.h"
 #include <BrainComponent.h>
 #include "BehaviorTree/BlackboardComponent.h"
+#include "BasePickup.h"
+#include "UI/EnemyHealthBarWidget.h"
 
 AEnemy::AEnemy()
 {
@@ -21,6 +28,87 @@ AEnemy::AEnemy()
 		CreateDefaultSubobject<UHealthComponent>(
 			TEXT("HealthComponent")
 		);
+
+	HealthBarComponent =
+		CreateDefaultSubobject<UWidgetComponent>(
+			TEXT("HealthBarComponent")
+		);
+
+	HealthBarComponent->SetupAttachment(GetRootComponent());
+
+	HealthBarComponent->SetWidgetSpace(EWidgetSpace::World);
+
+	HealthBarComponent->SetDrawSize(
+		FVector2D(200.0f, 35.0f)
+	);
+
+	HealthBarComponent->SetRelativeScale3D(
+		FVector(0.50f, 0.50f, 0.50f)
+	);
+
+	HealthBarComponent->SetRelativeLocation(
+		FVector(0.0f, 0.0f, 150.0f)
+	);
+
+
+	TargetableComponent =
+		CreateDefaultSubobject<UTargetableComponent>(
+			TEXT("TargetableComponent")
+		);
+
+
+	// Shared production lock-on indicator. Because this lives on AEnemy,
+	// every Blueprint/C++ child enemy gets the same indicator automatically.
+	TargetLockIndicator =
+		CreateDefaultSubobject<UWidgetComponent>(
+			TEXT("TargetLockIndicator")
+		);
+
+	TargetLockIndicator->SetupAttachment(
+		GetRootComponent()
+	);
+
+	TargetLockIndicator->SetRelativeLocation(
+		FVector(0.0f, 0.0f, 140.0f)
+	);
+
+	TargetLockIndicator->SetWidgetSpace(
+		EWidgetSpace::Screen
+	);
+
+	TargetLockIndicator->SetDrawSize(
+		FVector2D(64.0f, 64.0f)
+	);
+
+	TargetLockIndicator->SetPivot(
+		FVector2D(0.5f, 0.5f)
+	);
+
+	TargetLockIndicator->SetVisibility(false);
+
+	// Default production indicator widget. Child enemy Blueprints may override
+	// Widget Class on the inherited component if they need unique presentation.
+	static ConstructorHelpers::FClassFinder<UUserWidget>
+		TargetLockIndicatorWidgetClass(
+			TEXT("/Game/Game/Enemy/Visuals/WBP_TargetLockIndicator")
+		);
+
+	if (TargetLockIndicatorWidgetClass.Succeeded())
+	{
+		TargetLockIndicator->SetWidgetClass(
+			TargetLockIndicatorWidgetClass.Class
+		);
+	}
+
+
+	EnemyAuraComponent =
+		CreateDefaultSubobject<UEnemyAuraComponent>(
+			TEXT("EnemyAuraComponent")
+		);
+
+	EnemyAuraComponent->SetupAttachment(
+		GetRootComponent()
+	);
 
 
 	if (UCharacterMovementComponent* MoveComp =
@@ -53,14 +141,51 @@ void AEnemy::BeginPlay()
 	// HEALTH / DEATH
 	// ---------------------------------------------------------
 
+	if (HealthBarComponent && HealthBarWidgetClass)
+	{
+		HealthBarComponent->SetWidgetClass(HealthBarWidgetClass);
+
+		UpdateHealthBar();
+	}
+
+
+
 	if (HealthComponent)
 	{
 		HealthComponent->OnCharacterDeath.AddDynamic(
 			this,
 			&AEnemy::HandleDeath
 		);
+
+		HealthComponent->OnCharacterHurt.AddDynamic(
+			this,
+			&AEnemy::UpdateHealthBar
+		);
+
+		HealthComponent->OnCharacterHealed.AddDynamic(
+			this,
+			&AEnemy::UpdateHealthBar
+		);
 	}
 
+
+	// ---------------------------------------------------------
+	// LOCK-ON PRESENTATION
+	// ---------------------------------------------------------
+
+	if (TargetableComponent)
+	{
+		TargetableComponent->OnTargetedStateChanged.AddUniqueDynamic(
+			this,
+			&AEnemy::HandleTargetedStateChanged
+		);
+
+		// Keep the indicator correct even if targeted state was changed before
+		// BeginPlay (for example by a spawned/setup Blueprint).
+		HandleTargetedStateChanged(
+			TargetableComponent->IsTargeted()
+		);
+	}
 
 	// ---------------------------------------------------------
 	// AI
@@ -530,6 +655,10 @@ void AEnemy::PerformAttack()
 	);
 }
 
+void AEnemy::LandFromJump()
+{
+}
+
 void AEnemy::HandleActionFinished()
 {
 	UE_LOG(LogTemp, Warning, TEXT("HandleActionFinished called"));
@@ -540,7 +669,7 @@ void AEnemy::HandleActionFinished()
 		UBrainComponent* BrainComp = AIController->GetBrainComponent();
 		if (BrainComp)
 		{
-			FAIMessage Message(ActionFinishedMessage, this);
+			FAIMessage Message("ActionFinished", this);
 			FAIMessage::Send(AIController, Message);
 			UE_LOG(LogTemp, Warning, TEXT("Sent ActionFinished AI message"));
 		}
@@ -552,6 +681,19 @@ void AEnemy::HandleActionFinished()
 	else
 	{
 		UE_LOG(LogTemp, Error, TEXT("AIController is null"));
+	}
+}
+
+void AEnemy::HandleHurt()
+{
+	UGameplayStatics::PlaySoundAtLocation(GetWorld(), sound, GetActorLocation(), 1.0f, 1.0f, 0.0f, soundAttenuation);
+}
+
+void AEnemy::HandleTargetedStateChanged(bool bIsTargeted)
+{
+	if (TargetLockIndicator)
+	{
+		TargetLockIndicator->SetVisibility(bIsTargeted);
 	}
 }
 
@@ -573,12 +715,50 @@ void AEnemy::HandleDeath()
 		EEnemyState::Dead;
 
 
+	// A dead enemy must immediately stop being a valid player lock-on target.
+	// UTargetLockComponent checks this flag every update and will release the
+	// target cleanly without any dependency on a specific enemy Blueprint.
+	if (TargetableComponent)
+	{
+		TargetableComponent->SetCanBeTargeted(false);
+	}
+
+
+	// A dead enemy no longer needs its type-identification aura.
+	// This uses the component's master switch rather than deleting/resetting it.
+	if (EnemyAuraComponent)
+	{
+		EnemyAuraComponent->SetAuraEnabled(false);
+	}
+
+
 	bIsAttacking = false;
 
 	bCanDealDamage = false;
 
 
 	TargetActor = nullptr;
+
+	if(LootDropClass)
+	{
+		FActorSpawnParameters PickupSpawnParameters;
+		PickupSpawnParameters.Owner = this;
+		PickupSpawnParameters.Instigator = this;
+
+		const FVector PickupSpawnLocation =
+			GetActorLocation() +
+			GetActorForwardVector() * 50.0f;
+
+		const FRotator PickupSpawnRotation = GetActorRotation();
+
+		ABasePickup* SpawnedItem =
+			GetWorld()->SpawnActor<ABasePickup>(
+				LootDropClass,
+				PickupSpawnLocation,
+				PickupSpawnRotation,
+				PickupSpawnParameters
+			);
+	}
 
 
 	// ---------------------------------------------------------
@@ -629,6 +809,11 @@ void AEnemy::HandleDeath()
 	{
 		Destroy();
 	}
+}
+
+UStatusEffectType* AEnemy::GetStatusEffectPayload(AActor* Target) const
+{
+	return nullptr;
 }
 
 
@@ -714,4 +899,27 @@ void AEnemy::ChooseNewPatrolDestination()
 		PatrolDestination =
 			SpawnLocation;
 	}
+}
+
+void AEnemy::UpdateHealthBar()
+{
+	if (!HealthBarComponent || !HealthComponent)
+	{
+		return;
+	}
+
+	UEnemyHealthBarWidget* HealthBarWidget =
+		Cast<UEnemyHealthBarWidget>(
+			HealthBarComponent->GetUserWidgetObject()
+		);
+
+	if (!HealthBarWidget)
+	{
+		return;
+	}
+
+	HealthBarWidget->SetHealth(
+		HealthComponent->GetCurrentHealth(),
+		HealthComponent->GetMaxHealth()
+	);
 }

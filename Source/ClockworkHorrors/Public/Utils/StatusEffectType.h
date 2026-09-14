@@ -18,7 +18,8 @@ enum class STATUSEFFECT : uint8
 	Slowed,
 	Weakened,
 	Poisoned,
-	Burning
+	Burning,
+	KnockBack
 };
 
 UCLASS()
@@ -41,5 +42,11 @@ class CLOCKWORKHORRORS_API UStatusEffectType : public UDataAsset
 
 		UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Status", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 		float Percentage = 0.0f;
+
+		UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Status")
+		FVector KnockbackDirection = FVector::ZeroVector;
+
+		UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Status")
+		UStatusEffectType* NextStatusEffect = nullptr;
 	
 };

@@ -24,4 +24,5 @@ class CLOCKWORKHORRORS_API IEnemyInterface
 public:
 
 	virtual void PerformAttack() = 0;
+	virtual void LandFromJump() = 0;
 };

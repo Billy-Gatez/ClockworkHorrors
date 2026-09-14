@@ -2,6 +2,8 @@
 
 #include "NormalTypeEnemy.h"
 
+#include "EnemyVisuals/EnemyAuraComponent.h"
+
 
 ANormalTypeEnemy::ANormalTypeEnemy()
 {
@@ -18,4 +20,21 @@ ANormalTypeEnemy::ANormalTypeEnemy()
 	AttackDamage = 0.20f;
 
 	AttackCooldown = 0.50f;
+
+
+	// ---------------------------------------------------------
+	// ENEMY TYPE VISUAL
+	// ---------------------------------------------------------
+
+	if (EnemyAuraComponent)
+	{
+		EnemyAuraComponent->SetAuraType(
+			EEnemyAuraType::Normal
+		);
+	}
+}
+
+UStatusEffectType* ANormalTypeEnemy::GetStatusEffectPayload(AActor* Target) const
+{
+	return nullptr;
 }

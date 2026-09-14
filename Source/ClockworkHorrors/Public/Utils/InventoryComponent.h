@@ -59,7 +59,8 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
 	FInventorySlotEntry GetItem(FName ItemName) const;
-
+	UFUNCTION(BlueprintCallable, Category = "Inventory")
+	void ChangeItemValue(FInventorySlotEntry NewSlot,int32 SlotIndex);
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
 	void ShowInventory() const;
 
@@ -77,6 +78,9 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
 	void HandleItemAction(int32 ActionIndex, int32 SlotIndex);
+
+	UFUNCTION(BlueprintCallable, Category = "Inventory")
+	bool ThrowItem(int32 SlotIndex);
 
 	// DELEGATES
 	UPROPERTY(BlueprintReadOnly, Category = "Variables|Delegate")

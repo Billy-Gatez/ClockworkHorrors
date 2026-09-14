@@ -41,6 +41,19 @@ void AAIC_CodeEnemyController::OnPossess(APawn* InPawn)
 	RunBehaviorTree(BehaviorTree);
 }
 
+void AAIC_CodeEnemyController::SetBehaviorTree(UBehaviorTree* NewBehaviorTree)
+{
+	if (NewBehaviorTree)
+	{
+		BehaviorTree = NewBehaviorTree;
+		RunBehaviorTree(BehaviorTree);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("AIC_CodeEnemyController: Behavior tree is null. Cannot run behavior tree."));
+	}
+}
+
 void AAIC_CodeEnemyController::OnPerceptionUpdated(AActor* Actor, FAIStimulus Stimulus)
 {
 	UBlackboardComponent* BlackboardComp = GetBlackboardComponent();

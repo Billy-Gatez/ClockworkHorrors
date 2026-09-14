@@ -5,6 +5,7 @@
 #include "Components/SphereComponent.h"
 #include "BaseCharacter.h"
 #include "Utils/InventoryComponent.h"
+#include "Components/WidgetComponent.h"
 
 // Sets default values
 ABasePickup::ABasePickup() : MeshType(EPickupMeshType::Static)
@@ -31,6 +32,9 @@ ABasePickup::ABasePickup() : MeshType(EPickupMeshType::Static)
 	PickupRangeSphere->SetSphereRadius(PickupRange);
 
 	bIsPickedUp = false;
+
+	InteractWidget = CreateDefaultSubobject<UWidgetComponent>("InteractWidgetComponent");
+	InteractWidget->SetupAttachment(PickupMesh);
 
 }
 
@@ -138,6 +142,7 @@ void ABasePickup::BeginPlay()
 	if (PickupRangeSphere)
 	{
 		PickupRangeSphere->OnComponentBeginOverlap.AddDynamic(this,&ABasePickup::OnOverlapBegin);
+		PickupRangeSphere->OnComponentEndOverlap.AddDynamic(this, &ABasePickup::OnOverlapEnd);
 	}
 	else
 	{
@@ -145,6 +150,12 @@ void ABasePickup::BeginPlay()
 		{
 			GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Red, TEXT("PickupRangeSphere is invalid"));
 		}
+	}
+
+	if (InteractWidget)
+	{
+		InteractWidget->SetVisibility(false);
+		InteractWidget->SetRelativeLocation(PickupMesh->GetRelativeLocation());
 	}
 }
 
@@ -157,7 +168,30 @@ void ABasePickup::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedE
 
 void ABasePickup::OnOverlapBegin(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
-	if (!OtherActor || OtherActor != this) return;
+	if (!OtherActor || OtherActor == this) return;
+
+	if (!InteractWidget)
+	{
+		return;
+	}
+
+	if(ABaseCharacter* Player = Cast<ABaseCharacter>(OtherActor))
+	{
+		InteractWidget->SetVisibility(true);
+	}
+}
+
+void ABasePickup::OnOverlapEnd(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
+{
+	if (!OtherActor || OtherActor == this) return;
+	if (!InteractWidget)
+	{
+		return;
+	}
+	if(ABaseCharacter* Player = Cast<ABaseCharacter>(OtherActor))
+	{
+		InteractWidget->SetVisibility(false);
+	}
 }
 
 // Called every frame

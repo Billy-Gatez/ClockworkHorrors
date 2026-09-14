@@ -5,7 +5,7 @@
 #include <Kismet/GameplayStatics.h>
 #include "BaseCharacter.h"
 #include "Utils/InventoryItemEntryStruct.h"
-bool UPlayerSaveGame::SavePlayerData(float health, float exp, int32 curLevel, int32 CurrentSkillPoints, TArray<struct FInventorySlotEntry> curInventory, int32 equippedSlot)
+bool UPlayerSaveGame::SavePlayerData(float health, float maxExp, float exp, int32 curLevel, int32 CurrentSkillPoints, TArray<struct FInventorySlotEntry> curInventory, int32 equippedSlot, int32 SkillPath, FString SkillSelections)
 {
 	UPlayerSaveGame* SaveData = NewObject<UPlayerSaveGame>();
 	if (!SaveData)
@@ -14,11 +14,15 @@ bool UPlayerSaveGame::SavePlayerData(float health, float exp, int32 curLevel, in
 		return false;
 	}
 	SaveData->currentHealth = health;
+	SaveData->MaxExperience = maxExp;
 	SaveData->Experience = exp;
 	SaveData->Level = curLevel;
 	SaveData->SkillPoints = CurrentSkillPoints;
 	SaveData->Inventory = curInventory;
 	SaveData->currentEquippedSlot = equippedSlot;
+	SaveData->SkillTreePath = SkillPath;
+	SaveData->SkillTreeSelections = SkillSelections;
+
 	if (!UGameplayStatics::SaveGameToSlot(SaveData, TEXT("PlayerSaveSlot"), 0))
 	{
 		UE_LOG(LogTemp, Error, TEXT("Failed to save player to slot."));
@@ -46,7 +50,7 @@ UPlayerSaveGame* UPlayerSaveGame::LoadPlayerData()
 		UPlayerSaveGame* NewSaveData = NewObject<UPlayerSaveGame>();
 		if (NewSaveData) {
 			TArray<FInventorySlotEntry> slots;
-			NewSaveData->SavePlayerData(5, 0, 1, 0,slots,0);
+			NewSaveData->SavePlayerData(5, 100,0, 1, 0,slots,0,0,"0000000000");
 			return NewSaveData;
 		}
 		else {

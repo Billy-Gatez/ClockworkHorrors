@@ -13,6 +13,8 @@ class ASpellProjectile;
 class USceneComponent;
 class UStaticMeshComponent;
 class UWeaponPickup;
+class UManaComponent;
+class USpellSelectorWidget;
 
 UCLASS(Blueprintable)
 class CLOCKWORKHORRORS_API AStaff : public ABaseWeapon
@@ -42,6 +44,12 @@ public:
     UFUNCTION(BlueprintPure, Category = "Staff|Casting")
     float GetCurrentChargePercent() const;
 
+    UFUNCTION(BlueprintPure, Category = "Staff|Mana")
+    float GetSelectedSpellManaCost() const;
+
+    UFUNCTION(BlueprintPure, Category = "Staff|Mana")
+    bool HasEnoughManaForSelectedSpell() const;
+
     UFUNCTION(BlueprintPure, Category = "Staff|Spell")
     ASpells* GetSelectedSpell() const;
 
@@ -68,6 +76,9 @@ public:
     )
     TArray<TSubclassOf<ASpells>> SpellSlots;
 
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Staff|UI")
+    TSubclassOf<USpellSelectorWidget> SpellSelectorWidgetClass;
+
 protected:
     UFUNCTION(BlueprintImplementableEvent, Category = "Staff|Casting")
     void SpellCastRequested(
@@ -91,16 +102,35 @@ private:
 
     bool AttemptSpellCastCharged(AActor* CastingActor, FVector CastingDirection, float ChargePercent);
 
+    bool HandleRedirectableProjectileInput(AActor* CastingActor, const FVector& CastingDirection);
+    bool HandleGravityProjectileInput();
+
+    UManaComponent* GetManaComponent() const;
+
+    void CreateSpellSelectorWidget();
+    void RemoveSpellSelectorWidget();
+    void RefreshSpellSelector(int32 Direction);
+    int32 FindAdjacentSpellIndex(int32 StartIndex, int32 Direction) const;
+    FText GetSpellNameAtIndex(int32 SpellIndex) const;
+
     UPROPERTY()
     TObjectPtr<UWeaponPickup> WeaponPickup = nullptr;
 
     UPROPERTY()
     TObjectPtr<ACharacter> AnimationHolder = nullptr;
 
+    UPROPERTY()
+    TObjectPtr<USpellSelectorWidget> SpellSelectorWidget = nullptr;
+
     TArray<float> SpellCooldownEndTimes;
 
     bool bStaffInputBindingsCreated = false;
     bool bIsCharging = false;
+    bool bRedirectInputLatch = false;
     float ChargeStartTimeSeconds = 0.0f;
     int32 SelectedSpellIndex = 0;
+    int32 ActiveRedirectableSpellIndex = INDEX_NONE;
+    TWeakObjectPtr<ASpellProjectile> ActiveRedirectableProjectile;
+    int32 ActiveGravitySpellIndex = INDEX_NONE;
+    TWeakObjectPtr<ASpellProjectile> ActiveGravityProjectile;
 };
