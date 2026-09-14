@@ -17,11 +17,16 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(
     bool, bLocked
 );
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
+    FOnTargetLockEnabledChanged,
+    bool, bEnabled
+);
+
 /**
  * Reusable player-side Z-lock / target-lock component.
  *
- * Version 1 intentionally does not modify ABaseCharacter or AEnemy. Add this
- * component only to the duplicated test character Blueprint.
+ * Production player-side lock-on component. The main player Blueprint owns
+ * this component while target actors opt in through UTargetableComponent.
  */
 UCLASS(ClassGroup = (Targeting), meta = (BlueprintSpawnableComponent))
 class CLOCKWORKHORRORS_API UTargetLockComponent : public UActorComponent
@@ -40,7 +45,15 @@ public:
         FActorComponentTickFunction* ThisTickFunction
     ) override;
 
-    /** Lock the best target, or unlock if already locked. */
+    /** Enable or disable the entire target-lock system at runtime. Disabling while locked releases the current target safely. */
+    UFUNCTION(BlueprintCallable, Category = "Targeting|System")
+    void SetTargetLockEnabled(bool bEnabled);
+
+    /** Is this component currently allowed to acquire/maintain target lock? */
+    UFUNCTION(BlueprintPure, Category = "Targeting|System")
+    bool IsTargetLockEnabled() const { return bTargetLockEnabled; }
+
+    /** Lock the best target, or unlock if already locked. No-ops while the system is disabled. */
     UFUNCTION(BlueprintCallable, Category = "Targeting")
     void ToggleTargetLock();
 
@@ -72,11 +85,19 @@ public:
     /** Feed mouse delta into the same bounded combat camera without frame-time scaling. */
     void AddLockedCameraMouseLookInput(const FVector2D& LookInput);
 
-    /** Fired when a target is acquired or released. Useful later for a target marker widget. */
+    /** Fired on the player side when a target is acquired or released. */
     UPROPERTY(BlueprintAssignable, Category = "Targeting")
     FOnTargetLockChanged OnTargetLockChanged;
 
+    /** Fired whenever SetTargetLockEnabled actually changes the system enabled state. */
+    UPROPERTY(BlueprintAssignable, Category = "Targeting|System")
+    FOnTargetLockEnabledChanged OnTargetLockEnabledChanged;
+
 protected:
+    /** Master production switch. Designers can set the default here and use SetTargetLockEnabled at runtime. */
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Targeting|System")
+    bool bTargetLockEnabled = true;
+
     /** Radius used when searching for Pawns that contain UTargetableComponent. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Targeting|Selection", meta = (ClampMin = "100.0"))
     float SearchRadius = 2500.0f;

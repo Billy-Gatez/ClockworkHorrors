@@ -12,6 +12,12 @@
 #include "Engine/World.h"
 #include "CollisionQueryParams.h"
 #include "Utils/InventoryItemDataAsset.h"
+#include "Components/WidgetComponent.h"
+#include "Components/SphereComponent.h"
+#include <BaseCharacter.h>
+#include "Utils/InventoryComponent.h"
+#include "UI/InventorySlotWidget.h"
+#include "UI/MainInventoryWidget.h"
 
 // Sets default values
 ABaseBlaster::ABaseBlaster()
@@ -21,6 +27,9 @@ ABaseBlaster::ABaseBlaster()
     // Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
     PrimaryActorTick.bCanEverTick = false;
     ActionHappening = false;
+
+    InteractRangeSphere->SetupAttachment(skeletalMesh);
+    InteractWidget->SetupAttachment(skeletalMesh);
 
 }
 
@@ -36,17 +45,9 @@ void ABaseBlaster::BeginPlay()
     {
 
     }
-    if (UWeaponPickup* Pickup = FindComponentByClass<UWeaponPickup>())
-    {
-        if (Pickup->ItemDataAsset->Ammo != 0)
-        {
-            currentAmmo = Pickup->ItemDataAsset->Ammo;
-        }
-        else
-        {
-            reloadAmmo();
-        }
-    }
+    currentAmmo = -1;
+
+
 }
 
 void ABaseBlaster::Attack()
@@ -115,7 +116,7 @@ void ABaseBlaster::Attack()
         (AimPoint - MuzzleLocation).Rotation();
 
     FActorSpawnParameters Params;
-    Params.Instigator = ParentPawn;
+    Params.Instigator = Cast<APawn>(this);
     Params.Owner = ParentPawn;
 
     AActor* SpawnedActor = GetWorld()->SpawnActor<AActor>(
@@ -148,53 +149,101 @@ void ABaseBlaster::Attack()
 
 const bool ABaseBlaster::CanAttack()
 {
-    return !ActionHappening && Alive && currentAmmo > 0;
+    FInventorySlotEntry slot = GetWeaponSlot();
+    if(slot.IsValidEntry())
+        return !ActionHappening && Alive && slot.Ammo > 0;
+    else
+    {
+        return false;
+    }
 }
 
 void ABaseBlaster::useAmmo()
 {
-    currentAmmo = FMath::Max(currentAmmo - 1, 0);
-    OnAmmoChange.Broadcast(currentAmmo, maxAmmo);
     UWeaponPickup* Pickup = FindComponentByClass<UWeaponPickup>();
-    Pickup->ItemDataAsset->Ammo = currentAmmo;
+        ABaseCharacter* player = Cast<ABaseCharacter>(ParentPawn);
+        FInventorySlotEntry slot = GetWeaponSlot();
+        slot.Ammo -= 1;
+        currentAmmo = slot.Ammo;
+        player->InventoryComponent->ChangeItemValue(slot, slot.CurrentBind);
+        if(slot.IsValidEntry())
+        player->OnAmmoChanged.Broadcast(slot.Ammo, MaxAmmo,true);
+        else
+        {
+            player->OnAmmoChanged.Broadcast(0, MaxAmmo,true);
+        }
+
 }
 
 
 
-void ABaseBlaster::requestReload()
-{
-    if (!ActionHappening)
-    {
-        ActionHappening = true;
-    }
-    OnReloadStart.Broadcast();
-}
+
 
 void ABaseBlaster::reloadAmmo()
 {
-    currentAmmo = maxAmmo;
-    UWeaponPickup* Pickup = FindComponentByClass<UWeaponPickup>();
-    Pickup->ItemDataAsset->Ammo = currentAmmo;
-    OnAmmoChange.Broadcast(currentAmmo, maxAmmo);
+    if (currentAmmo < MaxAmmo)
+    {
+        UWeaponPickup* Pickup = FindComponentByClass<UWeaponPickup>();
+        ABaseCharacter* player = Cast<ABaseCharacter>(ParentPawn);
+        FInventorySlotEntry slot = GetAmmoSlot();
+        FInventorySlotEntry weaponSlot = GetWeaponSlot();
+        if (slot.IsValidEntry())
+        {
+            if (slot.ItemData->Quantity >= MaxAmmo)
+            {
+                player->InventoryComponent->RemoveItemsByAmount(slot.ItemData->ItemName,MaxAmmo - weaponSlot.Ammo);
+                weaponSlot.Ammo = MaxAmmo;
+            }  
+            else
+            {
+                player->InventoryComponent->RemoveItemsByAmount(slot.ItemData->ItemName, slot.ItemData->Quantity);
+                weaponSlot.Ammo = slot.ItemData->Quantity;
+            }
+            player->InventoryComponent->ChangeItemValue(weaponSlot, weaponSlot.CurrentBind);
+            currentAmmo = weaponSlot.Ammo;
+            player->OnAmmoChanged.Broadcast(currentAmmo, MaxAmmo, true);
+        }
+    }
+
+    
+    
 }
 
 
-int ABaseBlaster::getCurrAmmo()
+
+
+FInventorySlotEntry ABaseBlaster::GetWeaponSlot()
 {
-    return currentAmmo;
+    if (UWeaponPickup* Pickup = FindComponentByClass<UWeaponPickup>())
+    {
+        ABaseCharacter* player = Cast<ABaseCharacter>(ParentPawn);
+        if (player)
+        {
+            FInventorySlotEntry slot = player->InventoryComponent->GetItem(Pickup->ItemDataAsset->ItemName);
+            if (slot.IsValidEntry())
+            {
+                return slot;
+            }
+        }
+
+    }
+    return FInventorySlotEntry();
 }
 
-int ABaseBlaster::getMaxAmmo()
+FInventorySlotEntry ABaseBlaster::GetAmmoSlot()
 {
-    return maxAmmo;
-}
+    if (UWeaponPickup* Pickup = FindComponentByClass<UWeaponPickup>())
+    {
+        ABaseCharacter* player = Cast<ABaseCharacter>(ParentPawn);
+        if (player)
+        {
+        FInventorySlotEntry slot = player->InventoryComponent->GetItem(Pickup->ItemDataAsset->AmmoType->ItemName);
+        if (slot.IsValidEntry())
+        {
+            return slot;
+        }
+        }
 
-void ABaseBlaster::setMaxAmmo(int newMax)
-{
-    maxAmmo = newMax;
-}
-
-void ABaseBlaster::setCurrAmmo(int curAmmo)
-{
-    currentAmmo = curAmmo;
+    }
+    return FInventorySlotEntry();
 }

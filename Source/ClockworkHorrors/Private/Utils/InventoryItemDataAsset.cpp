@@ -11,7 +11,8 @@ UInventoryItemDataAsset::UInventoryItemDataAsset() : ItemName(NAME_None), /*Slot
 	bIsCombinable = false;
 	bIsCraftingMaterial = false;
 	WeaponRef = nullptr;
-	Ammo = 0;
+	bIsAmmo = false;
+	AmmoType = nullptr;
 	/*DurationAmount = 0.0f;
 	AttachmentData = FAttachmentData();
 	AttachmentData.Type = EAttachmentType::None;

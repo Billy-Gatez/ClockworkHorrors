@@ -17,6 +17,8 @@ public:
 	UPROPERTY()
 	float currentHealth;
 	UPROPERTY()
+	float MaxExperience;
+	UPROPERTY()
 	float Experience;
 	UPROPERTY()
 	int32 Level;
@@ -26,7 +28,10 @@ public:
 	TArray<struct FInventorySlotEntry> Inventory;
 	UPROPERTY()
 	int32 currentEquippedSlot;
-	TArray<int> ammo;
-	bool SavePlayerData(float health, float exp, int32 curLevel, int32 CurrentSkillPoints, TArray<struct FInventorySlotEntry> curInventory, int32 equippedSlot);
+	UPROPERTY()
+	int32 SkillTreePath = 0;
+	UPROPERTY()
+	FString SkillTreeSelections = "0000000000";
+	bool SavePlayerData(float health,float maxExp, float exp, int32 curLevel, int32 CurrentSkillPoints, TArray<struct FInventorySlotEntry> curInventory, int32 equippedSlot, int32 SkillPath, FString SkillSelections);
 	static UPlayerSaveGame* LoadPlayerData();
 };

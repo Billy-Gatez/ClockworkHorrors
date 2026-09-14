@@ -18,4 +18,5 @@ FInventorySlotEntry::FInventorySlotEntry()
 	bIsEquipped = false;
 	CurrentBind = -1;
 	bIsMaxStacked = false;
+	Ammo = 0;
 }

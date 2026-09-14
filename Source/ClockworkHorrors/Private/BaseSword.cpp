@@ -6,6 +6,8 @@
 #include "Components/BoxComponent.h"
 #include "Enemy.h"
 #include "Engine/DamageEvents.h"
+#include "Components/WidgetComponent.h"
+#include "Components/SphereComponent.h"
 
 
 ABaseSword::ABaseSword()
@@ -23,6 +25,9 @@ ABaseSword::ABaseSword()
 	HitBox->SetCollisionResponseToAllChannels(ECR_Ignore);
 	HitBox->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
 	HitBox->SetBoxExtent(FVector(5.811434, 11.917904, 50.987691));
+
+	InteractRangeSphere->SetupAttachment(staticMesh);
+	InteractWidget->SetupAttachment(staticMesh);
 }
 
 void ABaseSword::BeginPlay()

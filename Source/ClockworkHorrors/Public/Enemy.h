@@ -5,11 +5,17 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
 #include "Interfaces/EnemyInterface.h"
+#include "Interfaces/StatusEffectSource.h"
+#include "Engine/DamageEvents.h"
 #include "Enemy.generated.h"
 
 
 class UHealthComponent;
 class UInputComponent;
+class UTargetableComponent;
+class UEnemyAuraComponent;
+class UWidgetComponent;
+class UUserWidget;
 
 
 UENUM(BlueprintType)
@@ -23,7 +29,7 @@ enum class EEnemyState : uint8
 
 
 UCLASS(Abstract)
-class CLOCKWORKHORRORS_API AEnemy : public ACharacter, public IEnemyInterface
+class CLOCKWORKHORRORS_API AEnemy : public ACharacter, public IEnemyInterface, public IStatusEffectSource
 {
 	GENERATED_BODY()
 
@@ -52,6 +58,14 @@ protected:
 	// =========================================================
 	// COMPONENTS
 	// =========================================================
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI")
+	TObjectPtr<UWidgetComponent> HealthBarComponent;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "UI")
+	TSubclassOf<UUserWidget> HealthBarWidgetClass;
+
+	UFUNCTION()
+	void UpdateHealthBar();
 
 	UPROPERTY(
 		VisibleAnywhere,
@@ -59,6 +73,54 @@ protected:
 		Category = "Components"
 	)
 	UHealthComponent* HealthComponent;
+
+
+	/**
+	 * Marks this enemy as a valid Z-lock target.
+	 *
+	 * This component is created on AEnemy so every Blueprint/C++ child enemy
+	 * automatically participates in the same targeting system. Child Blueprints
+	 * can still tune Target Offset, Target Priority, and Can Be Targeted.
+	 */
+	UPROPERTY(
+		VisibleAnywhere,
+		BlueprintReadOnly,
+		Category = "Components"
+	)
+	UTargetableComponent* TargetableComponent;
+
+
+	/**
+	 * Shared lock-on indicator for every enemy derived from AEnemy.
+	 *
+	 * The default widget, screen-space behavior, draw size, and offset are
+	 * configured in C++. Child Blueprints can still override the inherited
+	 * Widget Component settings for unusually small/large enemies or bosses.
+	 */
+	UPROPERTY(
+		VisibleAnywhere,
+		BlueprintReadOnly,
+		Category = "Components"
+	)
+	UWidgetComponent* TargetLockIndicator;
+
+
+
+	/**
+	 * Runtime visual identifier for this enemy's type.
+	 *
+	 * Created once on AEnemy so every C++/Blueprint child automatically owns
+	 * the same aura system. Child enemy types only choose their AuraType.
+	 * The component also contains a master Aura Enabled switch so the visual
+	 * can be disabled without removing the production integration.
+	 */
+	UPROPERTY(
+		VisibleAnywhere,
+		BlueprintReadOnly,
+		Category = "Components"
+	)
+	UEnemyAuraComponent* EnemyAuraComponent;
+
 
 
 	// =========================================================
@@ -143,6 +205,13 @@ protected:
 		Category = "Enemy|Death"
 	)
 	float ExperienceReward;
+
+	UPROPERTY(
+		EditAnywhere,
+		BlueprintReadWrite,
+		Category = "Enemy|Death"
+	)
+	TSubclassOf<AActor> LootDropClass;
 
 
 	// =========================================================
@@ -251,14 +320,22 @@ protected:
 	 */
 	virtual void PerformAttack() override;
 
+	virtual void LandFromJump() override;
+
 	UFUNCTION()
 	void HandleActionFinished();
 
-	UPROPERTY(EditDefaultsOnly)
-	FName ActionFinishedMessage;
-
 	FTimerHandle AttackResetTimerHandle;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite)
+	USoundBase* sound;
+	UPROPERTY(EditDefaultsOnly,BlueprintReadWrite)
+	USoundAttenuation* soundAttenuation;
+	UFUNCTION()
+	void HandleHurt();
 
+	/** Keep the shared indicator synced with TargetableComponent state. */
+	UFUNCTION()
+	void HandleTargetedStateChanged(bool bIsTargeted);
 
 	// =========================================================
 	// DEATH
@@ -285,5 +362,7 @@ protected:
 		BlueprintImplementableEvent,
 		Category = "Enemy|Events"
 	)
-	void OnDeath();
+	void OnDeath(); 
+
+	virtual UStatusEffectType* GetStatusEffectPayload(AActor* Target = nullptr) const override;
 };

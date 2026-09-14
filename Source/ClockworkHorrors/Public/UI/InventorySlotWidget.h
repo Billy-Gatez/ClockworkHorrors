@@ -37,7 +37,8 @@ public:
 
 	UFUNCTION()
 	void AddQuantityToSlot(int32 QuantityToAdd);
-
+	UFUNCTION()
+	bool RemoveQuantityFromSlot(int32 QuantityToRemove);
 	UFUNCTION(BlueprintCallable, Category = "InventorySlot")
 	void ClearSlot();
 

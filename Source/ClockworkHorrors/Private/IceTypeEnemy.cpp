@@ -2,6 +2,8 @@
 
 #include "IceTypeEnemy.h"
 
+#include "EnemyVisuals/EnemyAuraComponent.h"
+
 #include "BaseCharacter.h"
 #include "Engine/DamageEvents.h"
 
@@ -27,6 +29,18 @@ AIceTypeEnemy::AIceTypeEnemy()
 	SlowMultiplier = 0.50f;
 
 	SlowDuration = 2.5f;
+
+
+	// ---------------------------------------------------------
+	// ENEMY TYPE VISUAL
+	// ---------------------------------------------------------
+
+	if (EnemyAuraComponent)
+	{
+		EnemyAuraComponent->SetAuraType(
+			EEnemyAuraType::Ice
+		);
+	}
 }
 
 
@@ -36,41 +50,20 @@ AIceTypeEnemy::AIceTypeEnemy()
 
 void AIceTypeEnemy::PerformAttack()
 {
-	if (!TargetActor)
-	{
-		return;
-	}
-
-
-	ABaseCharacter* PlayerCharacter =
-		Cast<ABaseCharacter>(TargetActor);
-
-
-	if (!PlayerCharacter)
-	{
-		return;
-	}
-
-
-	bCanDealDamage = true;
-
-
-	PlayerCharacter->TakeDamage(
-		AttackDamage,
-		FDamageEvent(),
-		GetController(),
-		this
-	);
-
-
-	UE_LOG(
-		LogTemp,
-		Log,
-		TEXT("%s performed ICE attack for %.2f damage."),
-		*GetName(),
-		AttackDamage
-	);
-
+	Super::PerformAttack();
 
 	OnIceAttack();
+}
+
+UStatusEffectType* AIceTypeEnemy::GetStatusEffectPayload(AActor* Target) const
+{
+	UStatusEffectType* StatusEffect = NewObject<UStatusEffectType>();
+
+	StatusEffect->Effect = STATUSEFFECT::Slowed;
+	StatusEffect->Duration = SlowDuration;
+	StatusEffect->TickDamage = 0.0f;
+	StatusEffect->TickInterval = 0.0f;
+	StatusEffect->Percentage = SlowMultiplier;
+
+	return StatusEffect;
 }

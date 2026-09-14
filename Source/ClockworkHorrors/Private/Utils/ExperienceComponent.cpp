@@ -2,6 +2,7 @@
 
 
 #include "Utils/ExperienceComponent.h"
+#include "Interfaces/PlayerInterface.h"
 
 // Sets default values for this component's properties
 UExperienceComponent::UExperienceComponent()
@@ -27,7 +28,6 @@ void UExperienceComponent::BeginPlay()
 	Super::BeginPlay();
 
 	// ...
-	
 }
 
 void UExperienceComponent::LevelUp()
@@ -36,7 +36,7 @@ void UExperienceComponent::LevelUp()
 	ExperiencePoints = 0.0f;
 	MaxExperiencePoints *= NextLevelExperienceMultiplier;
 	SkillPoints++;
-
+	SkillPointDelegate.Broadcast(SkillPoints);
 	UE_LOG(LogTemp, Error, TEXT("Level Up! New Level: %d"), CurrentLevel);
 }
 
@@ -57,6 +57,12 @@ void UExperienceComponent::AddExperience(float Amount)
 		float ExcessExperience = ExperiencePoints - MaxExperiencePoints;
 		LevelUp();
 		ExperiencePoints += ExcessExperience;
+	}
+
+	IPlayerInterface* PlayerInterface = Cast<IPlayerInterface>(GetOwner());
+	if (PlayerInterface)
+	{
+		PlayerInterface->UpdatePlayerHUDXP(ExperiencePoints, MaxExperiencePoints);
 	}
 
 	UE_LOG(LogTemp, Error, TEXT("Added Experience: %f, Current Experience: %f"), Amount, ExperiencePoints);

@@ -73,7 +73,7 @@ void UPauseMenuWidget::ReturnToMainMenu()
 	UCodeGameInstance* GameInstance = Cast<UCodeGameInstance>(GetGameInstance());
 	if (GameInstance)
 	{
-		GameInstance->LoadLevelSafe(0);
+		GameInstance->LoadLevelSafe(0,false);
 	}
 	else
 	{

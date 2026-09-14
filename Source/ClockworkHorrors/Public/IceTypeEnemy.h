@@ -67,4 +67,6 @@ protected:
 		Category = "Enemy|Ice"
 	)
 	void OnIceAttack();
+
+	virtual UStatusEffectType* GetStatusEffectPayload(AActor* Target = nullptr) const override;
 };

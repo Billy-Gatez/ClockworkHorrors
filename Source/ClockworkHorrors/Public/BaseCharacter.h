@@ -22,7 +22,10 @@ class UMainInventoryWidget;
 class UWeaponSlots;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FDelegate);
-
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FHealthBarDelegate, FLinearColor, color);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FHealthDelegate, float, CurrentHealth, float, MaxHealth);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FXPDelegate, float, CurrentXP, float, MaxXP, int, Level);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FAmmoDelegate, int, CurrentAmmo, int, MaxAmmo, bool, ShowOnHud);
 UCLASS()
 class CLOCKWORKHORRORS_API ABaseCharacter : public ACharacter, public IPlayerInterface
 {
@@ -56,7 +59,7 @@ public:
 
     UFUNCTION(BlueprintCallable, Category = "Weapon")
     void EquipWeaponSlot(int32 SlotNumber);
-    void ItemEquip(AActor* Actor);
+    void ItemEquip(AActor* Actor, struct FInventorySlotEntry* Slot = nullptr);
 
     UFUNCTION()
     void SavePlayerData();
@@ -72,7 +75,12 @@ public:
 
     UPROPERTY(BlueprintAssignable, Category = "Level")
     FDelegate OnLevelChange;
-
+    FHealthBarDelegate OnHealthBarColorChanged;
+	FHealthDelegate OnHealthChanged;
+	FXPDelegate OnXPChanged;
+    UPROPERTY(BlueprintAssignable, Category = "Weapon")
+    FAmmoDelegate OnAmmoChanged;
+    UPROPERTY(VisibleAnywhere,BlueprintReadOnly)
     bool bFinishedBeginPlay = false;
 
     void Reload();
@@ -90,41 +98,49 @@ public:
     UInventoryComponent* InventoryComponent;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon Slots")
     UWeaponSlots* WeaponSlots;
+    FLinearColor GetOriginalHealthBarColor() { return OriginalHealthBarColor; }
+    UPROPERTY(BlueprintReadOnly, Category = "UI")
+    UMainInventoryWidget* InventoryWidget;
 protected:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Health")
     bool bIsDead = false;
 
-    void ShowGameOverOverlay();
-    void HideGameOverOverlay();
+  /*  void ShowGameOverOverlay();
+    
     void ShowPauseOverlay();
-    void HidePauseOverlay();
+    void HidePauseOverlay();*/
+    void HideGameOverOverlay();
     void ShowGameOverMenu();
-    void RestartLevel();
-    void ShowControlsOverlay();
-    void HideControlsOverlay();
+    //void RestartLevel();
+    //void ShowControlsOverlay();
+    //void HideControlsOverlay();
     void ShowStartScreen();
     void HideStartScreen();
-    void ShowHealthBarHUD();
-    void HideHealthBarHUD();
+   /* void ShowHealthBarHUD();
+    void HideHealthBarHUD();*/
     void ShowReticleHUD();
     void HideReticleHUD();
-    float GetExperiencePercent() const;
-    FText GetExperienceText() const;
+    //float GetExperiencePercent() const;
+    //FText GetExperienceText() const;
 
-    void ShowExperienceHUD();
-    void HideExperienceHUD();
+   /* void ShowExperienceHUD();
+    void HideExperienceHUD();*/
 
     void ShowMiniMapHUD();
     void HideMiniMapHUD();
 
+    void ShowPlayerHUD();
+	void HidePlayerHUD();
+
     void HideHuds();
     void ShowHuds();
 
+    UFUNCTION()
+	void UpdateStatusEffects();
 
-    float GetHealthPercent() const;
-    FText GetHealthText() const;
+  /*  float GetHealthPercent() const;
+    FText GetHealthText() const;*/
 
-    TSubclassOf<AActor> weaponClass;
 
     UPROPERTY(Transient, BlueprintReadOnly, Category = "Animation")
     TObjectPtr<UCharacterAnimationComponent> CharacterAnimationComponent;
@@ -135,8 +151,8 @@ protected:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Experience")
     class UExperienceComponent* ExperienceComponent;
-
-
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SkillTree")
+    class USkillTreeComponent* SkillTree;
 
 
 
@@ -164,14 +180,19 @@ protected:
     UPROPERTY(BlueprintReadOnly, Category = "UI")
     UOptionsMenuWidget* OptionsMenuWidget;
 
-    UPROPERTY(BlueprintReadOnly, Category = "UI")
-    UMainInventoryWidget* InventoryWidget;
+
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI")
     TSubclassOf<UUserWidget> InventoryHudClass;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI")
     bool isInInventory;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UI")
+	TSubclassOf<UUserWidget> PlayerHUDClass;
+
+	UPROPERTY(BlueprintReadOnly, Category = "UI")
+	class UPlayerHUDWidget* PlayerHUDWidget;
 
     // MiniMap
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MiniMap")
@@ -213,7 +234,15 @@ private:
     TSubclassOf<AActor> Companion;
 
     class ICompanionInterface* CompanionInstance;
+    UFUNCTION()
+    void ChangeHealthBarColor(FLinearColor color);
+    FLinearColor HealthBarColor;
+    FLinearColor OriginalHealthBarColor;
 
+	bool bIsStunned = false;
+    float weakenEffect;
+	float slowEffect;
+    float baseSpeed;
 public:
     UFUNCTION()
     void AttackingAnim();
@@ -230,6 +259,18 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Character|Respawn")
     void ResetCharacterForRespawn();
 
+    UFUNCTION()
+	void ResetStunEffect();
+	FTimerHandle StunTimerHandle;
+    UFUNCTION()
+	void ResetWeakenEffect();
+	FTimerHandle WeakenTimerHandle;
+    UFUNCTION()
+	void ResetSlowEffect();
+	FTimerHandle SlowTimerHandle;
+
+	FTimerHandle StatusEffectTimerHandle;
+
     virtual void ResumeGame() override;
     virtual void OpenOptionsMenu() override;
     virtual void PreviousMenu() override;
@@ -237,4 +278,12 @@ public:
     virtual float GetCurrentHealth() const override;
     virtual void UpdateCompanionTarget(AActor* NewTarget, float damage) override;
     virtual void HealPlayer(float HealAmount) override;
+	virtual void UpdatePlayerHUDHP(float CurrentHealth, float MaxHealth) override;
+	virtual void UpdatePlayerHUDXP(float CurrentXP, float MaxXP) override;
+    void StunPlayer(float StunDuration);
+	void WeakenPlayer(float WeakenDuration, float WeakenStrength);
+	void SlowPlayer(float SlowDuration, float SlowStength);
+	void KnockBackPlayer(float KnockbackBack, float KnockbackUp, FVector Direction);
+	virtual void UpdatePlayerHUDStatuses(FName StatusEffectName, float Duration, float Strength, FVector KnockbackDirection = FVector::ZeroVector) override;
+    void LevelUpPressed();
 };

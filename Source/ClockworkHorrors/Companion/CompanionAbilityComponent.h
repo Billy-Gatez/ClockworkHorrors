@@ -4,6 +4,10 @@
 #include "Components/ActorComponent.h"
 #include "CompanionAbilityComponent.generated.h"
 
+// Forward declarations
+class ACircleOfRejuvenationZone;
+class UAnimMontage;
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnEssenceChanged, int32, CurrentEssence, int32, MaxEssence);
 
 UENUM(BlueprintType)
@@ -54,6 +58,15 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Abilities|Healing Touch")
 	class UAnimMontage* CastHealMontage;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Abilities|Circle Of Rejuvenation")
+	int32 RejuvenationCost = 2;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Abilities|Circle Of Rejuvenation")
+	UAnimMontage* RejuvenationCastMontage;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Abilities|Circle Of Rejuvenation")
+	TSubclassOf<ACircleOfRejuvenationZone> RejuvenationZoneClass;
+
 	// --- ESSENCE METHODS ---
 	UFUNCTION(BlueprintCallable, Category = "Companion|Essence")
 	void AddEssence(float Amount);
@@ -64,6 +77,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Abilities")
 	bool PerformHealingTouch(AActor* TargetActor);
 
+	UFUNCTION(BlueprintCallable, Category = "Abilities")
+	bool CastCircleOfRejuvenation(AActor* TargetActor);
+
 	UFUNCTION(BlueprintCallable, Category = "Abilities|Healing Touch")
 	void Notify_SpawnHandOrb();
 
@@ -72,6 +88,8 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Companion|Abilities")
 	EOrbFlightState GetCurrentOrbState() const { return CurrentOrbState; }
+
+	void DestroyAllOrbs();
 
 protected:
 	virtual void BeginPlay() override;

@@ -75,6 +75,15 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Checkpoint")
     class ACheckpointManager* CheckpointManager;
 
+	UPROPERTY(BlueprintReadOnly, Category = "Checkpoint")
+	class UUserWidget* CheckpointUI;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Checkpoint")
+    TSubclassOf<UUserWidget> CheckpointUIClass;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Checkpoint")
+	float CheckpointUIDisplayTime = 3.0f;
+
     // Enable this only on a checkpoint meant to move the player to another map.
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Checkpoint|Level Travel")
     bool bLoadsNewLevel = false;

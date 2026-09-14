@@ -47,13 +47,13 @@ public:
 	void QuitTheGame();
 
 	UFUNCTION()
-	void LoadLevelSafe(int LevelIndex);
+	void LoadLevelSafe(int LevelIndex, bool SavePlayerData);
 
 	UFUNCTION()
-	void LoadCurrentLevel();
+	void LoadCurrentLevel(bool RestartLevel);
 
 	UFUNCTION()
-	void LoadMainMenu();
+	void LoadMainMenu(bool RestartLevel);
 
 	UFUNCTION()
 	void SetMasterVolume(float Value);

@@ -8,6 +8,7 @@
 #include "WeaponPickup.h"
 #include "Utils/HealthComponent.h"
 #include "Utils/InventoryItemDataAsset.h"
+#include "Actors/Explosion/GrenadeBase.h"
 
 UInventoryComponent::UInventoryComponent()
 {
@@ -90,6 +91,7 @@ bool UInventoryComponent::AddItem(UInventoryItemDataAsset* Item)
     InventoryItems[AvailableSlotIndex] = FInventorySlotEntry();
     InventoryItems[AvailableSlotIndex].ItemData = Item;
     InventoryItems[AvailableSlotIndex].Quantity = Item->Quantity;
+    InventoryItems[AvailableSlotIndex].Ammo = Item->MaxAmmo;
     InventoryItems[AvailableSlotIndex].CurrentBind = AvailableSlotIndex;
     --CurrentAvailableSlots;
 
@@ -124,8 +126,8 @@ void UInventoryComponent::RemoveItemsByAmount(FName ItemName, int32 Quantity)
 
         const int32 QuantityToRemove =
             FMath::Min(Entry.Quantity, RemainingQuantity);
-
-        Entry.Quantity -= QuantityToRemove;
+            Entry.Quantity -= QuantityToRemove;
+        
         RemainingQuantity -= QuantityToRemove;
 
         OnItemRemoved.Broadcast(ItemName, QuantityToRemove, ItemIndex);
@@ -182,6 +184,12 @@ FInventorySlotEntry UInventoryComponent::GetItem(FName ItemName) const
     }
 
     return FInventorySlotEntry();
+}
+
+void UInventoryComponent::ChangeItemValue(FInventorySlotEntry NewSlot, int32 SlotIndex)
+{
+    InventoryItems[SlotIndex] = NewSlot;
+    OnItemDataAdded.Broadcast(InventoryItems[SlotIndex], InventoryItems[SlotIndex].CurrentBind, true);
 }
 
 void UInventoryComponent::ShowInventory() const
@@ -390,7 +398,32 @@ void UInventoryComponent::HandleItemAction(int32 ActionIndex, int32 SlotIndex)
 
     case 2: // Use
     {
-        if (!ItemData->bIsHealthItem)
+        if (ItemData->bIsThrowable)
+        {
+            ThrowItem(SlotIndex);
+            break;
+        }
+
+        if (ItemData->bIsHealthItem)
+        {
+            UHealthComponent* HealthComponent = Player->FindComponentByClass<UHealthComponent>();
+
+            if (!IsValid(HealthComponent))
+            {
+                UE_LOG(LogTemp, Error, TEXT("Player has no HealthComponent."));
+                return;
+            }
+
+            if (HealthComponent->CanHeal())
+            {
+                HealthComponent->Heal(ItemData->HealthRestoreAmount);
+                RemoveItemsByAmount(ItemData->ItemName, 1);
+            }
+
+            break;
+        }
+
+        /*if (!ItemData->bIsHealthItem)
         {
             return;
         }
@@ -409,7 +442,7 @@ void UInventoryComponent::HandleItemAction(int32 ActionIndex, int32 SlotIndex)
             HealthComponent->Heal(ItemData->HealthRestoreAmount);
 
             RemoveItemsByAmount(ItemData->ItemName, 1);
-        }
+        }*/
 
         break;
     }
@@ -479,6 +512,75 @@ void UInventoryComponent::HandleItemAction(int32 ActionIndex, int32 SlotIndex)
         );
         break;
     }
+}
+
+bool UInventoryComponent::ThrowItem(int32 SlotIndex)
+{
+    if (!InventoryItems.IsValidIndex(SlotIndex) || !InventoryItems[SlotIndex].IsValidEntry())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Invalid throwable inventory slot."));
+        return false;
+    }
+
+    UInventoryItemDataAsset* ItemData = InventoryItems[SlotIndex].ItemData;
+
+    if (!IsValid(ItemData))
+    {
+        return false;
+    }
+
+    if (!ItemData->bIsThrowable)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("%s is not throwable."), *ItemData->ItemName.ToString());
+        return false;
+    }
+
+    if (!ItemData->ThrowClass)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("%s does not have a ThrowClass assigned."), *ItemData->ItemName.ToString());
+        return false;
+    }
+
+    ABaseCharacter* Player = Cast<ABaseCharacter>(GetOwner());
+
+    if (!IsValid(Player))
+    {
+        UE_LOG(LogTemp, Error, TEXT("InventoryComponent owner is not an ABaseCharacter."));
+        return false;
+    }
+
+    const FVector SpawnLocation = Player->GetActorLocation() + Player->GetActorForwardVector() * 100.0f + FVector(0.0f, 0.0f, 50.0f);
+    const FRotator SpawnRotation = Player->GetControlRotation();
+
+    FActorSpawnParameters SpawnParameters;
+    SpawnParameters.Owner = Player;
+    SpawnParameters.Instigator = Player;
+    SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+
+    AActor* SpawnedActor = GetWorld()->SpawnActor<AActor>(ItemData->ThrowClass, SpawnLocation, SpawnRotation, SpawnParameters);
+
+    if (!IsValid(SpawnedActor))
+    {
+        UE_LOG(LogTemp, Error, TEXT("Failed to spawn throwable item %s."), *ItemData->ItemName.ToString());
+        return false;
+    }
+
+    AGrenadeBase* Grenade = Cast<AGrenadeBase>(SpawnedActor);
+
+    if (!IsValid(Grenade))
+    {
+        UE_LOG(LogTemp, Error, TEXT("%s ThrowClass is not derived from GrenadeBase."), *ItemData->ItemName.ToString());
+        SpawnedActor->Destroy();
+        return false;
+    }
+
+    const FVector ThrowDirection = Player->GetControlRotation().Vector() + FVector(0.0f, 0.0f, 0.15f);
+
+    Grenade->ThrowGrenade(ThrowDirection);
+
+    RemoveItemsByAmount(ItemData->ItemName, 1);
+
+    return true;
 }
 
 void UInventoryComponent::OnInteract()

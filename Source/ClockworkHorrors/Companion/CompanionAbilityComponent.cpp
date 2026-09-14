@@ -1,4 +1,5 @@
 #include "CompanionAbilityComponent.h"
+#include "CircleOfRejuvenationZone.h"
 #include "GameFramework/Character.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Animation/AnimInstance.h"
@@ -166,6 +167,7 @@ bool UCompanionAbilityComponent::ConsumeEssence(int32 Amount)
 	CurrentEssence -= Amount;
 
 	OnEssenceChanged.Broadcast(CurrentEssence, MaxEssence);
+	SyncOrbActors();
 
 	if (AAIController* AIComp = Cast<AAIController>(Cast<APawn>(GetOwner())->GetController()))
 	{
@@ -322,4 +324,78 @@ bool UCompanionAbilityComponent::PerformHealingTouch(AActor* TargetActor)
 
 	AnimInst->Montage_Play(CastHealMontage, 1.0f);
 	return true;
+}
+
+bool UCompanionAbilityComponent::CastCircleOfRejuvenation(AActor* TargetActor)
+{
+	if (CurrentEssence < RejuvenationCost || !RejuvenationZoneClass) return false;
+
+	ACharacter* CompanionCharacter = Cast<ACharacter>(GetOwner());
+	if (!CompanionCharacter) return false;
+
+	AActor* Target = IsValid(TargetActor) ? TargetActor : UGameplayStatics::GetPlayerCharacter(GetWorld(), 0);
+	if (!Target) return false;
+
+	// 1. Play animation montage if assigned (e.g. Channel / Bloom Burst)
+	if (RejuvenationCastMontage && CompanionCharacter->GetMesh())
+	{
+		if (UAnimInstance* AnimInst = CompanionCharacter->GetMesh()->GetAnimInstance())
+		{
+			AnimInst->Montage_Play(RejuvenationCastMontage, 1.0f);
+		}
+	}
+
+	// 2. Consume 2 essence points (this calls SyncOrbActors() so two active orbs vanish from orbit)
+	if (!ConsumeEssence(RejuvenationCost)) return false;
+
+	// 3. Trace down to terrain floor at target player's feet
+	FVector SpawnLocation = Target->GetActorLocation();
+
+	FHitResult HitResult;
+	FVector StartTrace = SpawnLocation + FVector(0.0f, 0.0f, 50.0f);
+	FVector EndTrace = SpawnLocation - FVector(0.0f, 0.0f, 250.0f);
+	FCollisionQueryParams TraceParams;
+	TraceParams.AddIgnoredActor(Target);
+	TraceParams.AddIgnoredActor(CompanionCharacter);
+
+	if (GetWorld()->LineTraceSingleByChannel(HitResult, StartTrace, EndTrace, ECC_Visibility, TraceParams))
+	{
+		SpawnLocation = HitResult.Location;
+	}
+
+	// 4. Spawn the stationary ground AoE zone
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.Owner = CompanionCharacter;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	ACircleOfRejuvenationZone* SpawnedZone = GetWorld()->SpawnActor<ACircleOfRejuvenationZone>(
+		RejuvenationZoneClass,
+		SpawnLocation,
+		FRotator::ZeroRotator,
+		SpawnParams
+	);
+
+	return (SpawnedZone != nullptr);
+}
+
+void UCompanionAbilityComponent::DestroyAllOrbs()
+{
+	// 1. Destroy orbiting orbs
+	for (AActor* Orb : ActiveOrbActors)
+	{
+		if (IsValid(Orb))
+		{
+			Orb->Destroy();
+		}
+	}
+	ActiveOrbActors.Empty();
+
+	// 2. Destroy casting orb in-flight or in-hand
+	if (IsValid(ActiveCastingOrb))
+	{
+		ActiveCastingOrb->Destroy();
+		ActiveCastingOrb = nullptr;
+	}
+
+	CurrentOrbState = EOrbFlightState::Orbiting;
 }

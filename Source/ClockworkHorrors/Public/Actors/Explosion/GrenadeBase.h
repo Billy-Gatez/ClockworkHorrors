@@ -46,6 +46,9 @@ protected:
 	UPROPERTY(BlueprintReadOnly, Category = "Grenade|State")
 	bool bHasExploded;
 
+	UPROPERTY(BlueprintReadOnly, Category = "Grenade|State")
+	bool bFuseStarted;
+
 	FTimerHandle FuseTimerHandle;
 
 	UFUNCTION(BlueprintCallable, Category = "Grenade")

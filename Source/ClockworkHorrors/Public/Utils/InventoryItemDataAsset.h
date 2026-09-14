@@ -40,7 +40,8 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Item|Flags", meta = (EditCondition = "!bIsEquippable"))
 	bool bIsStackable = false;
-
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Item|Flags", meta = (EditCondition = "!bIsEquippable"))
+	bool bIsAmmo = false;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Item|Flags")
 	bool bIsCraftingMaterial = false;
 
@@ -50,7 +51,7 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Item|Classes", meta = (EditCondition = "bIsEquippable"))
 	TSubclassOf<AActor> WeaponClass;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Item|Classes", meta = (EditCondition = "bIsEquippable"))
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Item|Classes", meta = (EditCondition = "bIsThrowable"))
 	TSubclassOf<AActor> ThrowClass;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Item|Values", meta = (EditCondition = "bIsHealthItem"))
@@ -58,13 +59,16 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Item|Values", meta = (EditCondition = "bIsEquippable"))
 	float DamageAmount = 0.0f;
-
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Item|Values", meta = (EditCondition = "bIsEquippable"))
+	int MaxAmmo = 0;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Item|Classes", meta = (EditCondition = "bIsEquippable"))
+	FName WeaponType;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Item|Values", meta = (EditCondition = "!bIsEquippable"))
 	int32 Quantity = 1;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Item|Values", meta = (EditCondition = "!bIsEquippable"))
 	class ABaseWeapon* WeaponRef;
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Item|Values", meta = (EditCondition = "!bIsEquippable"))
-	int Ammo;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Item|Values", meta = (EditCondition = "bIsEquippable"))
+	UInventoryItemDataAsset* AmmoType;
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Crafting")
 	TMap<TObjectPtr<UInventoryItemDataAsset>, int32> Recipe;
 

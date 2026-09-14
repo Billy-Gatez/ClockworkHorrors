@@ -2,8 +2,9 @@
 
 #include "PoisonTypeEnemy.h"
 
+#include "EnemyVisuals/EnemyAuraComponent.h"
+
 #include "BaseCharacter.h"
-#include "Engine/DamageEvents.h"
 
 
 APoisonTypeEnemy::APoisonTypeEnemy()
@@ -31,6 +32,25 @@ APoisonTypeEnemy::APoisonTypeEnemy()
 	PoisonTickInterval = 1.0f;
 
 	PoisonDuration = 5.0f;
+
+
+	// ---------------------------------------------------------
+	// ENEMY TYPE VISUAL
+	// ---------------------------------------------------------
+
+	if (EnemyAuraComponent)
+	{
+		EnemyAuraComponent->SetAuraType(
+			EEnemyAuraType::Poison
+		);
+	}
+}
+
+void APoisonTypeEnemy::PerformAttack()
+{
+	Super::PerformAttack();
+
+	OnPoisonAttack();
 }
 
 
@@ -38,7 +58,7 @@ APoisonTypeEnemy::APoisonTypeEnemy()
 // PERFORM ATTACK
 // =========================================================
 
-UStatusEffectType* APoisonTypeEnemy::GetStatusEffectPayload() const
+UStatusEffectType* APoisonTypeEnemy::GetStatusEffectPayload(AActor* Target) const
 {
 
 	UStatusEffectType* StatusEffect = NewObject<UStatusEffectType>();

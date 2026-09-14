@@ -49,7 +49,7 @@ public:
 	void SetCurrentHealth(float health) { CurrentHealth = health; }
 	UFUNCTION(BlueprintPure, Category = "Health")
 	float GetMaxHealth() const { return MaxHealth; }
-
+	void SetMaxHealth(float health);
 	UFUNCTION(BlueprintPure, Category = "Health")
 	bool IsDead() const
 	{

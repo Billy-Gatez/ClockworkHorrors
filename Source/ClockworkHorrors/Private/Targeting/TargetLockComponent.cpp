@@ -35,6 +35,17 @@ void UTargetLockComponent::TickComponent(
 {
     Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
+    if (!bTargetLockEnabled)
+    {
+        // This also protects against a runtime Blueprint/default-property change
+        // that bypasses SetTargetLockEnabled for any reason.
+        if (CurrentTarget)
+        {
+            ClearTargetLock();
+        }
+        return;
+    }
+
     if (!CurrentTarget)
     {
         return;
@@ -80,8 +91,33 @@ void UTargetLockComponent::RefreshOwnerReferences()
     }
 }
 
+void UTargetLockComponent::SetTargetLockEnabled(bool bEnabled)
+{
+    if (bTargetLockEnabled == bEnabled)
+    {
+        return;
+    }
+
+    bTargetLockEnabled = bEnabled;
+
+    if (!bTargetLockEnabled)
+    {
+        // Safely restore movement/camera/input state if another gameplay system
+        // disables lock-on during an active lock (cutscene, vehicle, stun, etc.).
+        RefreshOwnerReferences();
+        ClearTargetLock();
+    }
+
+    OnTargetLockEnabledChanged.Broadcast(bTargetLockEnabled);
+}
+
 void UTargetLockComponent::ToggleTargetLock()
 {
+    if (!bTargetLockEnabled)
+    {
+        return;
+    }
+
     RefreshOwnerReferences();
 
     if (IsTargetLocked())
@@ -98,6 +134,11 @@ void UTargetLockComponent::ToggleTargetLock()
 
 bool UTargetLockComponent::LockTarget(AActor* NewTarget)
 {
+    if (!bTargetLockEnabled)
+    {
+        return false;
+    }
+
     RefreshOwnerReferences();
 
     if (!OwnerCharacter || !OwnerPlayerController)
@@ -120,6 +161,11 @@ bool UTargetLockComponent::LockTarget(AActor* NewTarget)
 
     if (bWasAlreadyLocked)
     {
+        if (UTargetableComponent* PreviousTargetable = GetTargetableComponent(CurrentTarget))
+        {
+            PreviousTargetable->SetTargeted(false);
+        }
+
         OnTargetLockChanged.Broadcast(CurrentTarget, false);
     }
 
@@ -144,6 +190,11 @@ bool UTargetLockComponent::LockTarget(AActor* NewTarget)
     {
         OwnerPlayerController->SetIgnoreLookInput(true);
         bBlockedLookInput = true;
+    }
+
+    if (UTargetableComponent* NewTargetable = GetTargetableComponent(CurrentTarget))
+    {
+        NewTargetable->SetTargeted(true);
     }
 
     OnTargetLockChanged.Broadcast(CurrentTarget, true);
@@ -173,6 +224,11 @@ void UTargetLockComponent::ClearTargetLock()
 
     if (IsValid(OldTarget))
     {
+        if (UTargetableComponent* OldTargetable = GetTargetableComponent(OldTarget))
+        {
+            OldTargetable->SetTargeted(false);
+        }
+
         OnTargetLockChanged.Broadcast(OldTarget, false);
         UE_LOG(LogTemp, Log, TEXT("TargetLock: released %s"), *GetNameSafe(OldTarget));
     }
@@ -195,7 +251,7 @@ bool UTargetLockComponent::IsTargetLocked() const
 
 void UTargetLockComponent::AddLockedCameraLookInput(const FVector2D& LookInput)
 {
-    if (!bAllowManualCameraWhileLocked || !IsTargetLocked() || !GetWorld())
+    if (!bTargetLockEnabled || !bAllowManualCameraWhileLocked || !IsTargetLocked() || !GetWorld())
     {
         return;
     }
@@ -224,7 +280,7 @@ void UTargetLockComponent::AddLockedCameraLookInput(const FVector2D& LookInput)
 
 void UTargetLockComponent::AddLockedCameraMouseLookInput(const FVector2D& LookInput)
 {
-    if (!bAllowManualCameraWhileLocked || !bAllowMouseCameraWhileLocked || !IsTargetLocked() || !GetWorld())
+    if (!bTargetLockEnabled || !bAllowManualCameraWhileLocked || !bAllowMouseCameraWhileLocked || !IsTargetLocked() || !GetWorld())
     {
         return;
     }
@@ -254,7 +310,7 @@ void UTargetLockComponent::AddLockedCameraMouseLookInput(const FVector2D& LookIn
 
 AActor* UTargetLockComponent::FindBestTarget() const
 {
-    if (!OwnerCharacter || !OwnerPlayerController)
+    if (!bTargetLockEnabled || !OwnerCharacter || !OwnerPlayerController)
     {
         return nullptr;
     }
@@ -801,7 +857,7 @@ void UTargetLockComponent::RestoreMovementSettings()
 
 void UTargetLockComponent::SwitchTarget(float Direction)
 {
-    if (!IsTargetLocked() || FMath::IsNearlyZero(Direction) || !OwnerPlayerController)
+    if (!bTargetLockEnabled || !IsTargetLocked() || FMath::IsNearlyZero(Direction) || !OwnerPlayerController)
     {
         return;
     }

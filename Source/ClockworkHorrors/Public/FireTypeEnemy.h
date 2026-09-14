@@ -52,6 +52,13 @@ protected:
 	)
 	float BurnDuration = 3.0f;
 
+	UPROPERTY(
+		EditAnywhere,
+		BlueprintReadWrite,
+		Category = "Enemy|Fire"
+	)
+	float BurnTickInterval = 3.0f;
+
 
 	/**
 	 * Blueprint hook for fire-specific visuals and sound.
@@ -67,4 +74,6 @@ protected:
 		Category = "Enemy|Fire"
 	)
 	void OnFireAttack();
+
+	virtual UStatusEffectType* GetStatusEffectPayload(AActor* Target = nullptr) const override;
 };

@@ -25,7 +25,7 @@ void UCodeGameInstance::Init()
 void UCodeGameInstance::LoadFirstLevel()
 {
 	UE_LOG(LogTemp, Warning, TEXT("LoadFirstLevel called. FirstLevelIndex is: %d"), FirstLevelIndex);
-	LoadLevelSafe(FirstLevelIndex);
+	LoadLevelSafe(FirstLevelIndex,false);
 }
 
 void UCodeGameInstance::QuitTheGame()
@@ -37,7 +37,7 @@ void UCodeGameInstance::QuitTheGame()
 	}
 }
 
-void UCodeGameInstance::LoadLevelSafe(int LevelIndex)
+void UCodeGameInstance::LoadLevelSafe(int LevelIndex, bool PlayerSaveData)
 {
 	UE_LOG(LogTemp, Warning, TEXT("Attempting to load level with index: %d"), LevelIndex);
 	if (GameLevels.IsValidIndex(LevelIndex))
@@ -55,7 +55,7 @@ void UCodeGameInstance::LoadLevelSafe(int LevelIndex)
 			APlayerController* PlayerController = GetWorld()->GetFirstPlayerController();
 			if (PlayerController) {
 				ABaseCharacter* player = Cast<ABaseCharacter>(PlayerController->GetPawn());
-				if (player)
+				if (player && PlayerSaveData)
 				{
 					player->OnLevelChange.Broadcast();
 				}
@@ -69,14 +69,28 @@ void UCodeGameInstance::LoadLevelSafe(int LevelIndex)
 	}
 }
 
-void UCodeGameInstance::LoadCurrentLevel()
+void UCodeGameInstance::LoadCurrentLevel(bool RestartLevel = false)
 {
-	LoadLevelSafe(CurrentLevel);
+	if (RestartLevel)
+	{
+		LoadLevelSafe(CurrentLevel, false);
+	}
+	else
+	{
+		LoadLevelSafe(CurrentLevel, true);
+	}
 }
 
-void UCodeGameInstance::LoadMainMenu()
+void UCodeGameInstance::LoadMainMenu(bool RestartLevel = false)
 {
-	LoadLevelSafe(0);
+	if (RestartLevel)
+	{
+		LoadLevelSafe(0, false);
+	}
+	else
+	{
+		LoadLevelSafe(0, true);
+	}
 }
 
 void UCodeGameInstance::SetMasterVolume(float Value)

@@ -4,7 +4,7 @@
 #include "UI/ButtonWithText.h"
 #include "Components/Button.h"
 #include "Components/TextBlock.h"
-
+#include "Components/Image.h"
 void UButtonWithText::NativePreConstruct()
 {
 	Super::NativePreConstruct();
@@ -15,6 +15,17 @@ void UButtonWithText::NativePreConstruct()
 
 	if (BackgroundButton) {
 		BackgroundButton->SetBackgroundColor(ButtonColor);
+		FSlateBrush brush;
+		if (texture)
+		{
+		brush.SetResourceObject(texture);
+		brush.DrawAs = ESlateBrushDrawType::Image;
+		FButtonStyle style = BackgroundButton->GetStyle();
+		style.Normal = brush;
+		style.Hovered = brush;
+		style.Pressed = brush;
+		BackgroundButton->SetStyle(style);
+		}
 	}
 }
 
@@ -29,4 +40,5 @@ void UButtonWithText::NativeConstruct()
 void UButtonWithText::HandleButtonClicked()
 {
 	InternalButtonClicked.Broadcast();
+	InternalButtonClickedWithSource.Broadcast(this);
 }

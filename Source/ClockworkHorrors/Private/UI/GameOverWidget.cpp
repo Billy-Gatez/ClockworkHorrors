@@ -24,7 +24,7 @@ void UGameOverWidget::RestartLevel()
 	UCodeGameInstance* GameInstance = Cast<UCodeGameInstance>(GetGameInstance());
 	if (GameInstance)
 	{
-		GameInstance->LoadCurrentLevel();
+		GameInstance->LoadCurrentLevel(true);
 	}
 	else
 	{
@@ -51,7 +51,7 @@ void UGameOverWidget::ReturnToMainMenu()
 	UCodeGameInstance* GameInstance = Cast<UCodeGameInstance>(GetGameInstance());
 	if (GameInstance)
 	{
-		GameInstance->LoadMainMenu();
+		GameInstance->LoadMainMenu(true);
 	}
 	else
 	{

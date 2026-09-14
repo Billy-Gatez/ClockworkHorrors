@@ -24,5 +24,5 @@ class CLOCKWORKHORRORS_API IStatusEffectSource
 	// Add interface functions to this class. This is the class that will be inherited to implement this interface.
 public:
 
-	virtual UStatusEffectType* GetStatusEffectPayload() const = 0;
+	virtual UStatusEffectType* GetStatusEffectPayload(AActor* TargetActor = nullptr) const = 0;
 };
